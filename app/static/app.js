@@ -33,7 +33,7 @@
     cy: null,
     selected: null,
     center: null,
-    mode: "top",
+    mode: "overview",
     cluster: "",
     role: "",
     direction: "both",
@@ -82,30 +82,7 @@
       detail
     }));
   }
-  async function api(path, options = {}) {
-    const controller = new AbortController(),
-      timer = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(path, {
-        ...options,
-        signal: controller.signal
-      });
-      let data;
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error("Сервер вернул некорректный ответ.");
-      }
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail :
-        "Не удалось выполнить запрос.");
-      return data;
-    } catch (error) {
-      if (error.name === "AbortError") throw new Error("Время ожидания истекло. Повторите запрос.");
-      throw error;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
+  const api = window.MiraiHttp.createRequest(window.fetch.bind(window));
 
   function graphState(text, loading = false) {
     const el = $("graph-state");
@@ -113,6 +90,11 @@
     el.hidden = !text;
     if (loading) el.append(element("div", "spinner"));
     if (text) el.append(element("p", "", text));
+    if (text && !loading && !state.graph) {
+      const retry = element("button", "retry-load", "Повторить загрузку");
+      retry.addEventListener("click", load);
+      el.append(retry);
+    }
   }
 
   function savePositions() {
@@ -151,8 +133,8 @@
     const valid = id => id && state.nodes.has(id) ? id : null;
     state.selected = valid(s.selected);
     state.center = valid(s.center);
-    state.mode = s.mode || "top";
-    if (state.mode === "ego" && !state.center) state.mode = "top";
+    state.mode = s.mode || "overview";
+    if (state.mode === "ego" && !state.center) state.mode = "overview";
     state.cluster = state.model.clusters.has(String(s.cluster)) ? String(s.cluster) : "";
     state.role = Object.hasOwn(roles, s.role) ? s.role : "";
     state.direction = ["in", "out", "both"].includes(s.direction) ? s.direction : "both";
@@ -248,10 +230,9 @@
       lodFrame = 0;
       if (!state.cy) return;
       const z = state.cy.zoom();
-      const scale = z < .07 ? 5 : z < .14 ? 3 : z < .28 ? 1.8 : 1,
-        label = z >= .45;
+      const scale = z < .07 ? 5 : z < .14 ? 3 : z < .28 ? 1.8 : 1;
       const fontScale = z < .2 ? 5 : z < .4 ? 3 : z < .8 ? 1.8 : 1;
-      const key = scale + ":" + label + ":" + fontScale;
+      const key = scale + ":" + fontScale;
       if (key === lastLod) return;
       lastLod = key;
       state.cy.style().selector("node").style({
@@ -262,8 +243,8 @@
           width: e => e.data("width") * Math.max(1, scale * .65),
           "arrow-scale": Math.max(.85, scale * .5)
         })
-        .selector("node.neighbor").style({
-          label: label ? "data(label)" : "",
+        .selector("node.hovered").style({
+          label: "data(label)",
           "font-size": 11 * fontScale
         })
         .selector("node.focused").style({
@@ -306,20 +287,29 @@
     $("direction").disabled = !state.center && !state.selected;
     $("expand").disabled = !state.selected;
     $("bookmark").disabled = !state.selected;
+    updateExpansion();
     emit("context");
+  }
+
+  function updateExpansion() {
+    if (!state.model || !state.cy) return;
+    const selected = state.selected || (state.mode === "ego" ? state.center : null);
+    const ids = new Set(state.cy.nodes().map(n => n.id()));
+    const missing = selected ? [...G.neighbors(state.model, selected, state.direction)].filter(id => !ids.has(id)).length : 0;
+    $("expand").textContent = !selected ? "Раскрыть связи" : missing ? "Ещё соседи: " + missing : "Все соседи показаны";
+    $("expand").disabled = !selected || !missing;
   }
 
   function draw() {
     if (!state.cy || !state.model) return;
     savePositions();
     const ids = G.visible(state.model, state),
-      key = state.mode === "ego" && state.cluster === "" ? "ego:" + state.center : "global";
+      key = state.cluster !== "" ? "global" : state.mode === "ego" ? "ego:" + state.center : state.mode === "overview" ? "overview" : "global";
     const changed = key !== state.viewKey;
     state.viewKey = key;
-    if (key !== "global" && !state.locals.has(key)) state.locals.set(key, G.localPositions(state.model,
-      state.center, ids));
+    if (key !== "global" && !state.locals.has(key)) state.locals.set(key, key === "overview" ? G.overviewPositions(state.model) : G.localPositions(state.model, state.center, ids));
     const positions = key === "global" ? state.positions : state.locals.get(key);
-    const localDefaults = key === "global" ? null : G.localPositions(state.model, state.center, ids);
+    const localDefaults = key === "global" ? null : key === "overview" ? G.overviewPositions(state.model) : G.localPositions(state.model, state.center, ids);
     const edges = state.model.edges.filter(e => ids.has(e.source) && ids.has(e.target));
     const wanted = new Set([...ids, ...edges.map(e => e.id)]),
       cy = state.cy;
@@ -330,10 +320,13 @@
       for (const id of ids) {
         const n = state.nodes.get(id);
         if (!n) continue;
-        if (!positions.has(id)) positions.set(id, localDefaults?.get(id) || {
-          x: numeric(n.x),
-          y: numeric(n.y)
-        });
+        if (!positions.has(id)) {
+          const p = {...(localDefaults?.get(id) || {x: numeric(n.x), y: numeric(n.y)})};
+          if (localDefaults) {
+            while ([...positions.values()].some(old => Math.hypot(old.x - p.x, old.y - p.y) < 42)) p.y += 52;
+          }
+          positions.set(id, p);
+        }
         const data = {
           id,
           label: id.length > 9 ? "…" + id.slice(-6) : id,
@@ -377,9 +370,15 @@
     $("cluster").value = state.cluster;
     $("role-filter").value = state.role;
     $("direction").value = state.direction;
-    $("view-description").textContent = state.mode === "ego" ?
-      "Локальная схема: плательщики слева, получатели справа. Перетаскивайте узлы — связи сохраняются." :
-      "Положение узлов сохранено. Масштаб не скрывает связи. Размер — приоритет, толщина — сумма.";
+    const local = state.mode === "ego" && state.cluster === "";
+    const omitted = local ? [...G.neighbors(state.model, state.center, state.direction)].filter(id => !ids.has(id)).length : 0;
+    $("view-description").textContent = local ?
+      "Стрелка: отправитель → получатель. Плательщики слева, получатели справа. " +
+      (omitted ? "Вне вида соседей: " + omitted + ". Начали с 12 крупнейших по сумме; раскройте остальные кнопкой выше." : "Все соседи выбранного направления показаны.") :
+      state.mode === "overview" && state.cluster === "" ?
+      "12 приоритетных клиентов. Нажмите на узел, чтобы открыть его связи. Здесь показаны только переводы между видимыми клиентами." :
+      "Стрелка: отправитель → получатель. Толщина — сумма. Масштаб не скрывает связи.";
+    updateExpansion();
     graphState(ids.size ? "" : "По выбранному фильтру нет клиентов. Сбросьте фильтр.");
   }
 
@@ -509,7 +508,7 @@
           opacity: .22
         }
       }, {
-        selector: "node.neighbor",
+        selector: "node.hovered",
         style: {
           label: "data(label)",
           "font-size": 11,
@@ -523,7 +522,7 @@
       }, {
         selector: "node.focused",
         style: {
-          label: "data(id)",
+          label: "data(label)",
           "font-size": 14,
           "font-weight": 600,
           color: "#fff",
@@ -561,8 +560,10 @@
       }]
     });
     state.cy.on("tap", "node", e => focus(e.target.id(), {
-      keepView: true
+      keepView: state.mode !== "overview" || state.cluster !== ""
     }));
+    state.cy.on("mouseover", "node", e => e.target.addClass("hovered"));
+    state.cy.on("mouseout", "node", e => e.target.removeClass("hovered"));
     state.cy.on("tap", "edge", e => {
       state.cy.stop();
       emit("edge", {
@@ -650,6 +651,7 @@
         "В ответе нет узлов или связей.");
       const previous = state.version,
         view = state.graph ? snapshot() : null;
+      notice();
       savePositions();
       state.graph = graph;
       state.model = G.index(graph);
@@ -669,7 +671,7 @@
       if (state.selected && !state.nodes.has(state.selected)) state.selected = null;
       if (state.center && !state.nodes.has(state.center)) {
         state.center = null;
-        state.mode = "top";
+        state.mode = "overview";
       }
       if (!state.model.clusters.has(state.cluster)) state.cluster = "";
       $("stat-nodes").textContent = number.format(state.nodes.size);
@@ -710,6 +712,9 @@
         if (state.graph) {
           graphState("");
           notice(error.message + " На экране последний загруженный граф.");
+          const retry = element("button", "retry-load", "Повторить загрузку");
+          retry.addEventListener("click", load);
+          $("notice").append(retry);
         } else graphState(error.message);
       }
     } finally {
@@ -787,6 +792,11 @@
     remember();
     state.mode = mode;
     state.center = state.selected || state.center;
+    if (mode === "overview") {
+      state.selected = null;
+      state.center = null;
+      emit("clear");
+    }
     state.cluster = "";
     state.proof = null;
     state.expanded = new Set();
@@ -817,10 +827,11 @@
     highlight();
   });
   $("expand").addEventListener("click", () => {
-    if (!state.selected) return;
+    const selected = state.selected || (state.mode === "ego" ? state.center : null);
+    if (!selected) return;
     remember();
     const before = G.visible(state.model, state),
-      add = G.neighbors(state.model, state.selected, state.direction);
+      add = G.neighbors(state.model, selected, state.direction);
     for (const id of add) state.expanded.add(id);
     draw();
     const after = G.visible(state.model, state);
@@ -835,7 +846,7 @@
   });
   $("reset-view").addEventListener("click", () => {
     remember();
-    state.mode = "top";
+    state.mode = "overview";
     state.cluster = "";
     state.role = "";
     state.direction = "both";
@@ -852,7 +863,7 @@
     if (!state.cy) return;
     const ids = G.visible(state.model, state),
       map = state.viewKey === "global" ? state.positions : state.locals.get(state.viewKey),
-      local = state.viewKey === "global" ? null : G.localPositions(state.model, state.center, ids);
+      local = state.viewKey === "global" ? null : state.viewKey === "overview" ? G.overviewPositions(state.model) : G.localPositions(state.model, state.center, ids);
     state.cy.stop();
     state.cy.batch(() => state.cy.nodes().forEach(n => {
       const source = state.nodes.get(n.id()),
@@ -943,8 +954,10 @@
     const a = element("a");
     a.href = url;
     a.download = "mirai-graph.svg";
+    document.body.append(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
     notice("SVG содержит текущий набор узлов и связей, включая элементы за краями окна.");
   });
   window.Mirai = {

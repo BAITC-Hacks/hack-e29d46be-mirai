@@ -63,13 +63,30 @@
       id => id !== gid));
   }
 
+  function strongestNeighbors(model, gid, direction = "both", limit = 12) {
+    const sums = new Map();
+    for (const e of adjacent(model, gid, direction)) {
+      const id = e.source === gid ? e.target : e.source;
+      if (id !== gid) sums.set(id, (sums.get(id) || 0) + Math.max(0, finite(e.sum_kzt)));
+    }
+    return [...sums].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, limit).map(([id]) => id);
+  }
+
+  function overviewPositions(model) {
+    return new Map(model.ordered.slice(0, 12).map((id, i) => [id, {
+      x: (i % 4) * 140, y: Math.floor(i / 4) * 95
+    }]));
+  }
+
   function visible(model, state) {
     let ids;
     if (state.cluster !== "") ids = new Set(model.clusters.get(String(state.cluster)) || []);
     else if (state.mode === "all") ids = new Set(model.nodes.keys());
+    else if (state.mode === "overview") ids = new Set(model.ordered.slice(0, 12));
     else if (state.mode === "ego") {
       const center = state.center || state.selected;
-      ids = new Set(center && model.nodes.has(center) ? [center, ...neighbors(model, center, state
+      ids = new Set(center && model.nodes.has(center) ? [center, ...strongestNeighbors(model, center, state
         .direction)] : []);
     } else {
       const seeds = model.ordered.slice(0, 100);
@@ -268,6 +285,8 @@
     index,
     adjacent,
     neighbors,
+    strongestNeighbors,
+    overviewPositions,
     visible,
     action,
     evidence,

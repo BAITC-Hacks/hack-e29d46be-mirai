@@ -16,7 +16,7 @@
 .graph-menu>div {position:absolute;right:0;top:34px;min-width:170px;display:flex;flex-direction:column;gap:5px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 25px #0009}
 .selection-bar {padding:7px 14px;background:#172838;color:#c1d6e9;font-size:11px;display:flex;align-items:center;justify-content:space-between;gap:7px;min-height:32px;overflow-wrap:anywhere}
 .selection-bar button {font-size:10px;padding:3px 5px;flex-shrink:0}
-.graph-canvas {background-image:none;min-height:260px}
+.graph-canvas {background-image:none;min-height:220px}
 .graph-help-text {font-size:10px;line-height:1.5;color:#a9b9cb;padding:7px 13px;border-bottom:1px solid var(--line)}
 .legend {padding:9px 12px;gap:7px 12px}
 .legend .badge,.boundary-key {font-size:10px}
@@ -74,3 +74,5 @@ body.map-expanded .workspace {grid-template-columns:1fr;height:calc(100dvh - 118
 
 .calculation-details {margin-top:12px;font-size:12px;line-height:1.6}
 .calculation-details summary {cursor:pointer;color:#b8d3ff}
+
+.retry-load {margin:8px;font-size:12px;padding:7px 10px}

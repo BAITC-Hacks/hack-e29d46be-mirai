@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/workspace.css">
   <script defer src="/static/vendor/cytoscape.min.js"></script>
   <script defer src="/static/graph-model.js"></script>
+  <script defer src="/static/http.js"></script>
   <script defer src="/static/app.js"></script>
   <script defer src="/static/panels.js"></script>
 </head>
@@ -42,7 +43,7 @@
     <section class="graph-panel panel" aria-label="Граф переводов">
       <div class="graph-heading"><div><h2>Карта потоков</h2><span id="visible-count" class="muted">Загрузка…</span></div><span class="graph-tag">НАПРАВЛЕННЫЙ ГРАФ</span></div>
       <div class="graph-toolbar">
-        <div class="segmented" role="group" aria-label="Режим графа"><button data-mode="top" aria-pressed="true">Топ-100 + соседи</button><button data-mode="all" aria-pressed="false">Весь граф</button><button data-mode="ego" aria-pressed="false">Эго-сеть</button></div>
+        <div class="segmented" role="group" aria-label="Режим графа"><button data-mode="overview" aria-pressed="true">Обзор</button><button data-mode="top" aria-pressed="false">Топ-100 + соседи</button><button data-mode="all" aria-pressed="false">Весь граф</button><button data-mode="ego" aria-pressed="false">Эго-сеть</button></div>
         <label class="cluster-filter"><span class="sr-only">Показать кластер</span><select id="cluster"><option value="">Все кластеры</option></select></label>
         <label><span class="sr-only">Фильтр роли</span><select id="role-filter"><option value="">Все роли</option></select></label>
         <label><span class="sr-only">Направление связей</span><select id="direction" disabled><option value="both">Все направления</option><option value="in">Только входящие</option><option value="out">Только исходящие</option></select></label>

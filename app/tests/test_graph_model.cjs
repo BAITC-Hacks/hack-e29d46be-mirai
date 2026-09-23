@@ -236,3 +236,31 @@ test('closed cycle retains its closing edge when replayed from history', () => {
     '>' + A
   ]);
 });
+
+test('overview contains twelve clients without implicitly expanding neighbors',()=>{
+  const nodes=Array.from({length:40},(_,i)=>({id:String(i),priority_score:40-i}));
+  const m=G.index({nodes,edges:[{source:'0',target:'39',sum_kzt:1000}]});
+  const ids=G.visible(m,state({mode:'overview'}));
+  assert.equal(ids.size,12);assert(!ids.has('39'));
+  const positions=G.overviewPositions(m);
+  assert.equal(positions.size,12);
+  assert.equal(new Set([...positions.values()].map(p=>p.x+','+p.y)).size,12);
+});
+
+test('ego starts with strongest twelve neighbors and explicit expansion restores all',()=>{
+  const nodes=[{id:A},...Array.from({length:30},(_,i)=>({id:String(i)}))];
+  const edges=Array.from({length:30},(_,i)=>({source:String(i),target:A,sum_kzt:i+1}));
+  const m=G.index({nodes,edges});const s=state({mode:'ego',center:A});
+  const ids=G.visible(m,s);assert.equal(ids.size,13);assert(ids.has('29'));assert(!ids.has('0'));
+  const expanded=G.visible(m,{...s,expanded:G.neighbors(m,A)});assert.equal(expanded.size,31);
+  assert.deepEqual([...ids],[...G.visible(m,{...s,zoom:.025})]);
+  const proof=G.evidence(m,{gids:[A,'0'],edges:[{source:'0',target:A}]});
+  assert(G.visible(m,{...s,proof}).has('0'));
+});
+
+test('strongest neighbors sum reciprocal edges and obey direction',()=>{
+  const m=G.index({nodes:[{id:A},{id:B},{id:C}],edges:[{source:A,target:B,sum_kzt:6},{source:B,target:A,sum_kzt:6},{source:A,target:C,sum_kzt:10}]});
+  assert.deepEqual(G.strongestNeighbors(m,A,'both',1),[B]);
+  assert.deepEqual(G.strongestNeighbors(m,A,'out',1),[C]);
+  assert.deepEqual(G.strongestNeighbors(m,A,'in',1),[B]);
+});
