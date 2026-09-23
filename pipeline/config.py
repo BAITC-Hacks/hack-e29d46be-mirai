@@ -49,6 +49,27 @@ PRIORITY_WEIGHTS = {
 ROLE_WEIGHT = {"coordinator": 1.0, "consolidator": 0.9, "distributor": 0.8,
                "transit": 0.6, "terminal": 0.4, "peripheral": 0.1}
 
+# признаки из pipeline/extras.py, которые показываются как флаги узла
+EXTRA_FLAGS = {"fast_transit", "in_cycle", "sync_inflow"}
+
+# русские подписи для интерфейса и ассистента (graph.json → meta)
+METRIC_LABELS = {
+    "in_deg": "Плательщиков", "out_deg": "Получателей",
+    "in_kzt": "Входящие, ₸", "out_kzt": "Исходящие, ₸",
+    "in_tx": "Входящих переводов", "out_tx": "Исходящих переводов",
+    "pagerank": "Влияние (PageRank)", "pass_through": "Отдал дальше, доля от полученного",
+    "seed_exposure": "Близость к seed по потоку", "n_seed_up2": "Seed в пределах 2 переводов",
+    "betweenness": "Посредничество", "fast_forward_share": "Ушло дальше за ≤ 2 дня, доля",
+}
+FLAG_LABELS = {
+    "fast_transit": "Сквозной транзит (≤ 2 дней)",
+    "gather_scatter": "Сбор и раздача одновременно",
+    "truncated_by_depth": "4-е колено: обход остановился",
+    "isolated_seed": "Seed без переводов",
+    "in_cycle": "Участвует в цикле (деньги возвращаются)",
+    "sync_inflow": "Синхронные поступления (≥ 3 плательщика в день)",
+}
+
 EVIDENCE_MAX_LEN = 200
 TOP_N = 50
 RANDOM_SEED = 42

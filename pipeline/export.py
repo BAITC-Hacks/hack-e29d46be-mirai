@@ -51,6 +51,7 @@ def build_graph_json(df: pd.DataFrame, edges: pd.DataFrame, clusters: pd.DataFra
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "n_nodes": len(df), "n_edges": len(edges), "total_kzt": _clean(float(edges.sum_kzt.sum())),
             "roles": C.ROLES, "role_colors": C.ROLE_COLORS,
+            "metric_labels": C.METRIC_LABELS, "flag_labels": C.FLAG_LABELS,
         },
         "nodes": nodes,
         "edges": [{"source": str(e.src), "target": str(e.dst), "sum_kzt": _clean(float(e.sum_kzt)),
