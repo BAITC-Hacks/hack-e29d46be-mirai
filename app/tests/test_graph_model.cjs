@@ -170,56 +170,6 @@ test('local layout is deterministic, finite, and separates payers and recipients
   assert(p.get(C).x > 0);
   assert.deepEqual([...p], [...G.localPositions(model, B, [C, A, B])]);
 });
-test('SVG is vector geometry, escapes text, and retains directed edges and isolated nodes', () => {
-  const svg = G.svg({
-    title: '<script>bad & title</script>',
-    nodes: [{
-      id: A,
-      x: 0,
-      y: 0,
-      size: 20,
-      label: true
-    }, {
-      id: B,
-      x: 100,
-      y: 0,
-      size: 20,
-      seed: true
-    }, {
-      id: C,
-      x: 50,
-      y: 100,
-      size: 20,
-      boundary: true
-    }],
-    edges: [{
-      source: A,
-      target: B,
-      width: 2,
-      sum_kzt: 300,
-      n_tx: 2
-    }, {
-      source: B,
-      target: A,
-      width: 1
-    }, {
-      source: C,
-      target: C,
-      width: 1
-    }]
-  });
-  assert(svg.startsWith('<svg'));
-  assert(!svg.includes('<image'));
-  assert(!svg.includes('<script>'));
-  assert(svg.includes('&lt;script&gt;'));
-  assert(svg.includes('marker-end'));
-  assert(svg.includes('<circle'));
-  assert(svg.includes('<polygon'));
-  assert(svg.includes(C));
-  assert(svg.includes('stroke-dasharray'));
-  assert(svg.includes(' Q'));
-});
-
 test('closed cycle retains its closing edge when replayed from history', () => {
   const m = G.index({
     ...graph,

@@ -926,27 +926,13 @@
     if (!state.cy) return;
     const cy = state.cy;
     savePositions();
-    const nodes = cy.nodes().map(n => ({
-      id: n.id(),
-      ...n.position(),
-      color: n.data("color"),
-      size: n.width(),
-      seed: n.data("seed"),
-      boundary: n.data("boundary"),
-      label: n.hasClass("focused") || n.hasClass("proof"),
-      opacity: n.hasClass("dim") ? .3 : 1
-    }));
-    const edges = cy.edges().map(e => ({
-      ...e.data(),
-      width: e.width(),
-      color: e.hasClass("flow") ? "#b8d9ff" : "#9eb4d0",
-      opacity: e.hasClass("dim") ? .25 : .85
-    }));
-    const text = G.svg({
-      nodes,
-      edges,
-      title: "Mirai · " + (state.proof?.label || "наблюдаемые переводы")
-    });
+    let text;
+    try {
+      text = G.svg(G.svgScene(cy, "Mirai · " + (state.proof?.label || "наблюдаемые переводы")));
+    } catch (error) {
+      notice(error.message);
+      return;
+    }
     const url = URL.createObjectURL(new Blob([text], {
       type: "image/svg+xml;charset=utf-8"
     }));

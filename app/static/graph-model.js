@@ -247,52 +247,109 @@
     "'": "&apos;"
   } [c]));
 
+  // Capture computed styles and public model-space geometry; never rerun layout.
+  function svgScene(cy, title) {
+    const number = (el, name) => finite(el.numericStyle(name));
+    const nodes = cy.nodes().filter(n => n.visible()).map(n => ({
+      id: n.id(), ...n.position(), width: n.width(), height: n.height(),
+      shape: n.style("shape"), color: n.style("background-color"),
+      backgroundOpacity: number(n, "background-opacity"),
+      borderColor: n.style("border-color"), borderWidth: number(n, "border-width"),
+      borderOpacity: number(n, "border-opacity"), borderStyle: n.style("border-style"),
+      opacity: n.effectiveOpacity(), z: number(n, "z-index"),
+      label: n.style("label"), fontSize: number(n, "font-size"),
+      fontFamily: n.style("font-family"), fontWeight: n.style("font-weight"),
+      textColor: n.style("color"), textOpacity: number(n, "text-opacity"),
+      textMarginY: number(n, "text-margin-y"),
+      textBackground: n.style("text-background-color"),
+      textBackgroundOpacity: number(n, "text-background-opacity"),
+      textPadding: number(n, "text-background-padding"),
+      labelBounds: n.boundingBox({includeNodes: false, includeEdges: false,
+        includeLabels: true, includeOverlays: false, includeUnderlays: false})
+    })).sort((a, b) => a.z - b.z);
+    const edges = cy.edges().filter(e => e.visible()).map(e => ({
+      ...e.data(), start: e.sourceEndpoint(), end: e.targetEndpoint(),
+      controls: e.controlPoints() || [], width: e.width(),
+      color: e.style("line-color"), opacity: e.effectiveOpacity() * number(e, "line-opacity"),
+      lineCap: e.style("line-cap"), lineStyle: e.style("line-style"),
+      arrowColor: e.style("target-arrow-color"), arrowShape: e.style("target-arrow-shape"),
+      arrowScale: number(e, "arrow-scale"), arrowOpacity: e.effectiveOpacity(),
+      z: number(e, "z-index")
+    })).sort((a, b) => a.z - b.z);
+    return {title, nodes, edges};
+  }
+
   function svg(scene) {
-    const ns = scene.nodes,
-      es = scene.edges,
-      pos = new Map(ns.map(n => [n.id, n]));
-    const pairs = new Set(es.map(e => edgeKey(e.source, e.target)));
-    const xs = ns.map(n => n.x),
-      ys = ns.map(n => n.y);
-    const margin = Math.max(100, ...ns.map(n => (n.size || 20) / 2 + 30));
-    const left = Math.min(0, ...xs) - margin - 60,
-      top = Math.min(0, ...ys) - margin;
-    const width = Math.max(320, Math.max(0, ...xs) - left + margin + 60),
-      height = Math.max(240, Math.max(0, ...ys) - top + margin);
-    let s =
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} ${top} ${width} ${height}" role="img"><title>${xml(scene.title || "Mirai: фрагмент графа")}</title><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#9eb4d0"/></marker></defs><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#0e1621"/><text x="${left+20}" y="${top+30}" fill="#e7edf5" font-family="sans-serif" font-size="16">${xml(scene.title || "Mirai · наблюдаемые переводы")}</text>`;
-    for (const e of es) {
-      const a = pos.get(e.source),
-        b = pos.get(e.target);
-      if (!a || !b) continue;
-      const dx = b.x - a.x,
-        dy = b.y - a.y,
-        d = Math.hypot(dx, dy) || 1,
-        r = (b.size || 20) / 2 + 7;
-      let curve;
-      if (a.id === b.id) curve =
-        `M${a.x-8},${a.y-8} C${a.x-70},${a.y-90} ${a.x+70},${a.y-90} ${a.x+8},${a.y-8}`;
-      else if (pairs.has(edgeKey(e.target, e.source))) {
-        const bend = 28;
-        curve =
-          `M${a.x},${a.y} Q${(a.x+b.x)/2-dy/d*bend},${(a.y+b.y)/2+dx/d*bend} ${b.x-dx/d*r},${b.y-dy/d*r}`;
-      } else curve = `M${a.x},${a.y} L${b.x-dx/d*r},${b.y-dy/d*r}`;
-      s +=
-        `<path d="${curve}" fill="none" stroke="${xml(e.color||"#9eb4d0")}" stroke-width="${finite(e.width,1.5)}" opacity="${finite(e.opacity,.8)}" marker-end="url(#arrow)"><title>${xml(`${e.source} → ${e.target}: ${metric(e.sum_kzt)} ₸, ${metric(e.n_tx)} переводов`)}</title></path>`;
+    const {nodes, edges} = scene;
+    const point = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
+    const xy = p => `${p.x},${p.y}`;
+    // A missing renderer endpoint must not silently turn into an invented curve.
+    for (const e of edges) {
+      if (!point(e.start) || !point(e.end) || !e.controls.every(point))
+        throw new Error("Геометрия графа ещё не готова. Повторите экспорт SVG.");
     }
-    for (const n of ns) {
-      const r = (n.size || 20) / 2,
-        color = /^#[0-9a-f]{6}$/i.test(n.color || "") ? n.color : "#b0b0b0";
-      s += `<g opacity="${finite(n.opacity,1)}"><title>${xml(n.id)}</title>`;
-      s += n.seed ?
-        `<polygon points="${n.x},${n.y-r} ${n.x+r},${n.y} ${n.x},${n.y+r} ${n.x-r},${n.y}" fill="${color}" stroke="#e7edf5"/>` :
-        `<circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${color}" stroke="#c7d3e2"${n.boundary?' stroke-dasharray="3 3"':''}/>`;
-      if (n.label) s +=
-        `<text x="${n.x}" y="${n.y+r+16}" text-anchor="middle" fill="#e7edf5" font-size="12" font-family="sans-serif">${xml(n.id)}</text>`;
+    const bounds = [];
+    for (const n of nodes) {
+      const pad = n.borderWidth / 2;
+      bounds.push({x: n.x - n.width / 2 - pad, y: n.y - n.height / 2 - pad},
+        {x: n.x + n.width / 2 + pad, y: n.y + n.height / 2 + pad});
+      const b = n.labelBounds;
+      if (n.label && b && Number.isFinite(b.x1) && Number.isFinite(b.y1))
+        bounds.push({x: b.x1, y: b.y1}, {x: b.x2, y: b.y2});
+    }
+    for (const e of edges) bounds.push(e.start, e.end, ...e.controls);
+    const xs = bounds.map(p => p.x), ys = bounds.map(p => p.y);
+    const left = Math.min(0, ...xs) - 40, top = Math.min(0, ...ys) - 70;
+    const width = Math.max(720, Math.max(0, ...xs) - left + 40);
+    const height = Math.max(240, Math.max(0, ...ys) - top + 70);
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} ${top} ${width} ${height}" role="img"><title>${xml(scene.title)}</title><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#0e1621"/><text x="${left+20}" y="${top+30}" fill="#e7edf5" font-family="sans-serif" font-size="16">${xml(scene.title)}</text>`;
+    for (const e of edges) {
+      const last = e.controls.at(-1) || e.start;
+      const dx = e.end.x - last.x, dy = e.end.y - last.y;
+      const length = Math.hypot(dx, dy) || 1, ux = dx / length, uy = dy / length;
+      const arrow = e.arrowShape === "triangle";
+      // Cytoscape 3.30.4 triangle gap/size (vendored renderer, MIT).
+      // Public targetEndpoint is the arrow tip; the line stops before it.
+      const gap = arrow ? 2 * e.width * e.arrowScale : 0;
+      const end = {x: e.end.x - ux * gap, y: e.end.y - uy * gap};
+      let d = `M${xy(e.start)}`;
+      if (!e.controls.length) d += ` L${xy(end)}`;
+      else e.controls.forEach((c, i) => {
+        const next = e.controls[i + 1];
+        const join = next ? {x: (c.x + next.x) / 2, y: (c.y + next.y) / 2} : end;
+        d += ` Q${xy(c)} ${xy(join)}`;
+      });
+      const dash = e.lineStyle === "dashed" ? ' stroke-dasharray="6 3"' : e.lineStyle === "dotted" ? ' stroke-dasharray="1 1"' : '';
+      s += `<g data-edge-id="${xml(e.id)}"><title>${xml(`${e.source} → ${e.target}: ${metric(e.sum_kzt)} ₸, ${metric(e.n_tx)} переводов`)}</title><path d="${d}" fill="none" stroke="${xml(e.color)}" stroke-width="${e.width}" stroke-linecap="${xml(e.lineCap)}" opacity="${e.opacity}"${dash}/>`;
+      if (arrow) {
+        const size = .3 * Math.max(Math.pow(13.37 * e.width, .9), 29) * e.arrowScale;
+        const back = {x: e.end.x - ux * size, y: e.end.y - uy * size};
+        const a = {x: back.x - uy * size / 2, y: back.y + ux * size / 2};
+        const b = {x: back.x + uy * size / 2, y: back.y - ux * size / 2};
+        s += `<polygon points="${xy(e.end)} ${xy(a)} ${xy(b)}" fill="${xml(e.arrowColor)}" opacity="${e.arrowOpacity}"/>`;
+      }
       s += '</g>';
     }
-    return s +
-      `<text x="${left+20}" y="${top+height-20}" fill="#bdcbe0" font-size="12" font-family="sans-serif">${xml(`${ns.length} клиентов · ${es.length} связей. Стрелка — направление. Выводы — гипотезы; выборка неполна.`)}</text></svg>`;
+    for (const n of nodes) {
+      const rx = n.width / 2, ry = n.height / 2;
+      const dash = n.borderStyle === "dashed" ? ' stroke-dasharray="4 2"' : n.borderStyle === "dotted" ? ' stroke-dasharray="1 1"' : '';
+      const style = `fill="${xml(n.color)}" fill-opacity="${n.backgroundOpacity}" stroke="${xml(n.borderColor)}" stroke-width="${n.borderWidth}" stroke-opacity="${n.borderOpacity}"${dash}`;
+      s += `<g data-node-id="${xml(n.id)}" opacity="${n.opacity}"><title>${xml(n.id)}</title>`;
+      s += n.shape === "diamond" ?
+        `<polygon points="${n.x},${n.y-ry} ${n.x+rx},${n.y} ${n.x},${n.y+ry} ${n.x-rx},${n.y}" ${style}/>` :
+        `<ellipse cx="${n.x}" cy="${n.y}" rx="${rx}" ry="${ry}" ${style}/>`;
+      if (n.label) {
+        const b = n.labelBounds;
+        if (n.textBackgroundOpacity && b && Number.isFinite(b.x1)) {
+          // Cytoscape label bounding boxes include a 2px renderer allowance.
+          const p = n.textPadding - 2;
+          s += `<rect x="${b.x1-p}" y="${b.y1-p}" width="${b.x2-b.x1+2*p}" height="${b.y2-b.y1+2*p}" fill="${xml(n.textBackground)}" opacity="${n.textBackgroundOpacity}"/>`;
+        }
+        s += `<text x="${n.x}" y="${n.y+ry+n.textMarginY}" dominant-baseline="text-before-edge" text-anchor="middle" fill="${xml(n.textColor)}" opacity="${n.textOpacity}" font-size="${n.fontSize}" font-family="${xml(n.fontFamily)}" font-weight="${xml(n.fontWeight)}">${xml(n.label)}</text>`;
+      }
+      s += '</g>';
+    }
+    return s + `<text x="${left+20}" y="${top+height-20}" fill="#bdcbe0" font-size="12" font-family="sans-serif">${xml(`${nodes.length} клиентов · ${edges.length} связей. Стрелка — направление. Выводы — гипотезы; выборка неполна.`)}</text></svg>`;
   }
   return {
     index,
@@ -310,6 +367,7 @@
     metric,
     finite,
     edgeKey,
+    svgScene,
     svg
   };
 });
