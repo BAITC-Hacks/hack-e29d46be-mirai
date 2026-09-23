@@ -20,6 +20,17 @@ def sanity_check(edges: pd.DataFrame, nodes: pd.DataFrame, tx: pd.DataFrame) -> 
                            (tx, ["src", "dst", "sum_kzt", "date"])):
         if not set(columns) <= set(frame) or frame[columns].isna().any().any():
             raise ValueError("Во входных данных отсутствуют обязательные поля или значения")
+    # Float identifiers may already have lost digits; never coerce them back.
+    int64 = np.iinfo(np.int64)
+    for name, frame, columns in (("nodes", nodes, ("gid",)),
+                                 ("edges", edges, ("src", "dst")),
+                                 ("transactions", tx, ("src", "dst"))):
+        for column in columns:
+            values = frame[column]
+            if not pd.api.types.is_integer_dtype(values.dtype):
+                raise ValueError(f"{name}.{column}: идентификаторы должны иметь целочисленный тип")
+            if len(values) and (int(values.min()) < int64.min or int(values.max()) > int64.max):
+                raise ValueError(f"{name}.{column}: идентификаторы выходят за диапазон int64")
     if nodes.gid.duplicated().any() or edges.duplicated(["src", "dst"]).any():
         raise ValueError("Повторяющиеся gid или агрегированные рёбра")
     for frame in (edges, tx):

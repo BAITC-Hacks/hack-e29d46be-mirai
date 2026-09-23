@@ -106,7 +106,7 @@ def _first_pass(r, t: dict) -> tuple[str, float, str, list]:
             score = min(1.0, 0.5 + 0.1 * r.in_deg)
             return ("terminal", score,
                     f"Получил {_kzt(r.in_kzt)} от {r.in_deg} плательщиков и не переводил дальше "
-                    f"(колено {r.depth} — обход продолжался бы)", flags)
+                    f"(колено {r.depth} — обход продолжался бы){seed_note}", flags)
         return ("peripheral", 0.2, f"Разовый получатель: {_kzt(r.in_kzt)} от {r.in_deg}, дальше не переводил", flags)
 
     if r.is_seed and r.in_deg == 0 and r.out_deg == 0:
