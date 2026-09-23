@@ -1,0 +1,14 @@
+# pipeline
+pandas>=2.0
+pyarrow>=14.0
+numpy>=1.24
+networkx>=3.1
+scipy>=1.10
+
+# app
+fastapi>=0.110
+uvicorn>=0.29
+
+# assistant
+openai>=1.30
+python-dotenv>=1.0

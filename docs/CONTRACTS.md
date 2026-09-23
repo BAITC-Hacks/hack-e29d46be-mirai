@@ -12,12 +12,12 @@
 data/*.parquet
    │
    ▼
-pipeline/  (Мирас: Claude + GPT)          python run.py  ─┐
+pipeline/  (Мирас-Claude; extras.py — Даниал)          python run.py  ─┐
    ├─ metrics.py   — метрики узлов                         │ 1. считает пайплайн (< 5 мин)
    ├─ roles.py     — правила ролей + evidence              │ 2. запускает сервер
    ├─ clusters.py  — Louvain + гипотезы                    │
    ├─ priority.py  — priority_score, top_nodes             │
-   ├─ extras.py    — временные паттерны, циклы, устойчивость (Мирас-GPT)
+   ├─ extras.py    — временные паттерны, циклы, устойчивость (Даниал)
    └─ export.py    — 3 CSV + outputs/graph.json            │
    │                                                       │
    ▼                                                       │
@@ -36,7 +36,7 @@ outputs/nodes_roles.csv, clusters.csv, top_nodes.csv, graph.json
 `outputs/nodes_roles.csv` — ровно 2 248 строк
 | колонка | тип | пример |
 |---|---|---|
-| gid | int64 | 100245 |
+| gid | int64 | 100000004015047100 |
 | role | str | consolidator |
 | role_score | float 0–1 | 0.87 |
 | cluster_id | int | 3 |
@@ -67,7 +67,7 @@ pass_through, truncated_by_depth`), чтобы не плодить синони�
   },
   "nodes": [
     {
-      "id": 100245,
+      "id": "100000004015047100",
       "depth": 2, "is_seed": false,
       "role": "consolidator", "role_score": 0.87,
       "cluster_id": 3, "priority_score": 0.91, "rank": 1,
@@ -82,20 +82,23 @@ pass_through, truncated_by_depth`), чтобы не плодить синони�
     }
   ],
   "edges": [
-    {"source": 100245, "target": 100777, "sum_kzt": 500000, "n_tx": 3}
+    {"source": "100000004015047100", "target": "100000003684369100", "sum_kzt": 500000, "n_tx": 3}
   ],
   "clusters": [
     {"cluster_id": 3, "n_nodes": 120, "n_seed": 7, "sum_kzt_internal": 45000000,
-     "top_gids": [100245, 100777], "hypothesis": "Сбор средств от 7 seed в 2 точки консолидации"}
+     "top_gids": ["100000004015047100", "100000003684369100"], "hypothesis": "Сбор средств от 7 seed в 2 точки консолидации"}
   ],
   "extras": {
     "resilience": [{"removed_top_n": 5, "largest_component_share": 0.61, "n_components": 34}],
-    "cycles": [[100245, 100777, 100900, 100245]]
+    "cycles": [["100000004015047100", "100000003684369100", "100000004015047100"]]
   }
 }
 ```
 
 Правила:
+- ⚠️ **gid в graph.json — строки.** Настоящие gid 18-значные (`100000004015047100`) — больше, чем JavaScript
+  хранит точно (2⁵³ ≈ 9·10¹⁵): числом они молча округлятся в браузере и поиск сломается. В API, в `cited_gids`
+  ассистента и в интерфейсе gid тоже всегда строка. В CSV — int64, как в ТЗ.
 - `x`, `y` — координаты раскладки, **посчитанные в пайплайне** (браузер не раскладывает 2 248 узлов сам — тормозит).
 - Любое поле в `metrics`, `flags`, `extras` опционально: интерфейс и ассистент **не падают**, если его нет.
 - Добавлять новые поля можно без PR `contract` (обратно совместимо). Удалять/переименовывать — только через `contract`.
@@ -118,20 +121,20 @@ pass_through, truncated_by_depth`), чтобы не плодить синони�
 # assistant/__init__.py
 from assistant.core import node_card, ask
 
-def node_card(gid: int, graph: dict) -> dict:
+def node_card(gid: str, graph: dict) -> dict:
     """{'text': str, 'source': 'llm' | 'template'} — всегда отвечает, даже без API-ключа."""
 
 def ask(question: str, graph: dict) -> dict:
-    """{'answer': str, 'cited_gids': list[int], 'source': 'llm' | 'fallback'}"""
+    """{'answer': str, 'cited_gids': list[str], 'source': 'llm' | 'fallback'}"""
 ```
 - `graph` — распарсенный `outputs/graph.json`.
 - Нет ключа / ошибка API → шаблонный ответ из метрик, **никаких исключений наружу**.
 - Провайдер через `.env`: `LLM_PROVIDER=nvidia|openai|anthropic|none`.
 
-## 5. Интерфейс extras (внутри зоны Мираса)
+## 5. Интерфейс extras (зона Даниала, вызывается из ядра Мираса)
 
 ```python
-# pipeline/extras.py  (Мирас-GPT)
+# pipeline/extras.py  (Даниал)
 def compute_extras(nodes: pd.DataFrame, edges: pd.DataFrame, tx: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     per_node: DataFrame[gid, fast_transit_share, sync_in_days, in_cycle, likely_true_terminal, ...]
