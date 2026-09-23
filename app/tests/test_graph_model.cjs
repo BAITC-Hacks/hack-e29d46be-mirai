@@ -264,3 +264,31 @@ test('strongest neighbors sum reciprocal edges and obey direction',()=>{
   assert.deepEqual(G.strongestNeighbors(m,A,'out',1),[C]);
   assert.deepEqual(G.strongestNeighbors(m,A,'in',1),[B]);
 });
+
+test('direction change follows the clicked client rather than the previous ego center', () => {
+  const previous = state({mode: 'ego', center: A, selected: B});
+  assert.deepEqual([...G.visible(model, previous)], [A, B]);
+  const next = {...previous, ...G.directionView(previous, 'out')};
+  assert.equal(next.center, B);
+  assert.deepEqual([...G.visible(model, next)], [B, C]);
+  assert.equal(previous.center, A); // History can still restore the previous scene.
+  assert.deepEqual([...G.visible(model, {...next, ...G.directionView(next, 'in')})], [B, A]);
+});
+
+test('direction change clears expansions, proof and filters that hide the selected client neighbors', () => {
+  const previous = state({mode: 'all', center: A, selected: B, cluster: '0', role: 'unmatched',
+    expanded: new Set([A]), proof: {gids: [A]}});
+  const next = {...previous, ...G.directionView(previous, 'out')};
+  assert.equal(next.mode, 'ego');
+  assert.equal(next.expanded.size, 0);
+  assert.equal(next.proof, null);
+  assert.deepEqual([...G.visible(model, next)], [B, C]);
+  assert.deepEqual([...previous.expanded], [A]);
+});
+
+test('direction change retains the ego center when selection has been cleared', () => {
+  const previous = state({mode: 'ego', center: B});
+  const next = {...previous, ...G.directionView(previous, 'out')};
+  assert.equal(next.selected, null);
+  assert.deepEqual([...G.visible(model, next)], [B, C]);
+});

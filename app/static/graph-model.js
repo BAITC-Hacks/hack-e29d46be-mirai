@@ -79,6 +79,19 @@
     }]));
   }
 
+  function directionView(state, direction) {
+    const center = state.selected || state.center;
+    return {
+      direction,
+      center,
+      mode: center ? "ego" : state.mode,
+      cluster: center ? "" : state.cluster,
+      role: center ? "" : state.role,
+      expanded: new Set(),
+      proof: null
+    };
+  }
+
   function visible(model, state) {
     let ids;
     if (state.cluster !== "") ids = new Set(model.clusters.get(String(state.cluster)) || []);
@@ -287,6 +300,7 @@
     neighbors,
     strongestNeighbors,
     overviewPositions,
+    directionView,
     visible,
     action,
     evidence,

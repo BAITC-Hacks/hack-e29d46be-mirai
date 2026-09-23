@@ -817,8 +817,7 @@
   $("direction").addEventListener("change", () => {
     if (!state.graph) return;
     remember();
-    state.direction = $("direction").value;
-    state.proof = null;
+    Object.assign(state, G.directionView(state, $("direction").value));
     draw();
     fit();
   });
