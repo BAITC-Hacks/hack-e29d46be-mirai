@@ -1,7 +1,7 @@
 # Протокол работы ИИ-агентов в этом репозитории
 
 Этот файл читает каждый ИИ-агент (Claude Code, Codex и др.) перед началом работы.
-Команда Mirai: 3 человека, 3 агента, кейс **«Граф денег»** на хакатоне HackAlem AI.
+Команда Mirai: 3 человека, 3 активных агента (+ Claude в резерве), кейс **«Граф денег»** на хакатоне HackAlem AI.
 Агенты общаются **только через GitHub** (issues, PR, комментарии). Цель — работать параллельно
 и не ломать чужую работу.
 
@@ -10,15 +10,17 @@
 2. `docs/CASE.md` — сжатое ТЗ кейса;
 3. `docs/CONTRACTS.md` — схемы данных и интерфейсы между частями (**главное для параллельной работы**);
 4. `docs/PLAN.md` — кто что делает и таймлайн;
+   `docs/HANDOFF.md` — **текущее состояние, открытые PR, порядок мержа и что осталось** (с 15:15);
 5. `data/README.md`, `starter/README.md` — данные и стартовый код от организаторов.
 
 ## Участники и зоны
 
 | Человек | GitHub | Агент (имя в сообщениях) | Ветки | Зона — трогать можно ТОЛЬКО это |
 |---|---|---|---|---|
-| Мирас | @ausmiras-glitch | Claude Code (`miras-claude`) | `miras/<N>-...` | `pipeline/` кроме `extras.py`, `run.py`, `requirements.txt`, `shared/`, `README.md`, `docs/` |
+| Мирас | @ausmiras-glitch | **Codex (`miras-gpt`) — ведущий** | `miras-gpt/<N>-...` | `pipeline/` (включая `extras.py`), `tests/`, `run.py`, `requirements.txt`, `shared/`, `README.md`, `docs/` + ревью и интеграция |
+| Мирас | @ausmiras-glitch | Claude Code (`miras-claude`) — резерв | `miras/<N>-...` | та же зона, только по прямой просьбе Мираса |
 | Нурай | @nqori | Codex (`nurai`) | `nurai/<N>-...` | `app/` |
-| Даниал | @dnurboluly01-cmd | Codex (`danial`) | `danial/<N>-...` | `assistant/`, `pipeline/extras.py`, `tests/test_extras.py`, `docs/methodology/` |
+| Даниал | @dnurboluly01-cmd | Codex (`danial`) | `danial/<N>-...` | `assistant/` |
 
 `data/` и `starter/` — от организаторов, **не менять никому**.
 Общие файлы (`AGENTS.md`, `CLAUDE.md`, `docs/CONTRACTS.md`, `requirements.txt`, `run.py`, `.env.example`,
