@@ -78,7 +78,7 @@ def _anthropic_call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
-    model = os.getenv("LLM_MODEL", "claude-3-5-haiku-latest")
+    model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
     system_parts = [str(m.get("content", "")) for m in messages if m.get("role") == "system"]
     converted: list[dict[str, Any]] = []
     pending_tool_results: list[dict[str, Any]] = []
@@ -175,7 +175,7 @@ def call_model(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
     elif provider == "openai":
         model = os.getenv("LLM_MODEL", "gpt-4o-mini")
     else:
-        model = os.getenv("LLM_MODEL", "claude-3-5-haiku-latest")
+        model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
 
     cache_payload = {
         "provider": provider,
