@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import csv
 import importlib
 import json
 import logging
@@ -163,22 +162,12 @@ def create_app(root: Path = ROOT) -> FastAPI:
 
     @application.get("/api/top")
     def top(n: int = Query(default=20, ge=1, le=2248)):
-        _, nodes, _, _, path = store.read()
-        csv_path = path.parent / "top_nodes.csv"
-        if path.name == "graph.json" and csv_path.is_file():
-            try:
-                with csv_path.open(encoding="utf-8-sig", newline="") as handle:
-                    rows = [{"rank": int(r["rank"]), "gid": str(r["gid"]), "role": r["role"],
-                             "priority_score": float(r["priority_score"]), "why": r["why"]}
-                            for r in csv.DictReader(handle)]
-                rows = [r for r in rows if r["gid"] in nodes and math.isfinite(r["priority_score"])]
-                if rows:
-                    return sorted(rows, key=lambda r: r["rank"])[:n]
-            except (OSError, ValueError, KeyError, TypeError):
-                log.info("Top CSV unavailable; using graph priorities")
+        # CSV files are replaced separately by the pipeline. Use the same graph
+        # snapshot as /api/node so old or partial CSV cannot mix versions.
+        _, nodes, _, _, _ = store.read()
         ordered = sorted(nodes.values(), key=lambda x: (-score(x), int(x["id"])))[:n]
         return [{"rank": i, "gid": node["id"], "role": node.get("role", "peripheral"),
-                 "priority_score": score(node), "why": node.get("evidence", "")}
+                 "priority_score": score(node), "why": node.get("priority_why") or node.get("evidence", "")}
                 for i, node in enumerate(ordered, 1)]
 
     @application.get("/api/node/{gid}/card")
