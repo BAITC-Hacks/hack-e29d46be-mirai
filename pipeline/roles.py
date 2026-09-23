@@ -60,11 +60,11 @@ def _first_pass(r, t: dict) -> tuple[str, float, str, list]:
         quick = not np.isnan(fast) and fast >= C.TRANSIT_FAST_SHARE
         if balanced or quick:
             if quick:
-                flags.append("fast_transit")
+                flags.append("rapid_outflow")
             score = 0.5 + 0.25 * balanced + 0.25 * quick
             parts = [f"Отдаёт дальше {_pct(r.pass_through)} полученного ({_kzt(r.in_kzt)} → {_kzt(r.out_kzt)})"]
             if quick:
-                parts.append(f"{_pct(fast)} ушло в течение {C.FAST_FORWARD_DAYS} дн. после поступления")
+                parts.append(f"{_pct(fast)} исходящих по датам близки к поступлениям (0–{C.FAST_FORWARD_DAYS} дн.; суммы не сопоставлены)")
             return ("transit", score, "; ".join(parts), flags)
 
     if r.out_deg == 0 and r.in_deg > 0:

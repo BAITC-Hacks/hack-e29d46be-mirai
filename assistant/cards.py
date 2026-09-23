@@ -105,7 +105,11 @@ def card_facts(gid: str, graph: dict) -> dict | None:
         return None
     facts = {key: node.get(key) for key in ("role", "role_score", "priority_score", "cluster_id", "depth", "is_seed", "evidence")}
     facts.update(gid=gid, metrics=node.get("metrics") if isinstance(node.get("metrics"), dict) else {},
-                 flags=node.get("flags") if isinstance(node.get("flags"), list) else [])
+                 flags=list(map(str, node["flags"])) if isinstance(node.get("flags"), list) else [])
+    meta = graph.get("meta") if isinstance(graph.get("meta"), dict) else {}
+    for key in ("flag_labels", "metric_labels"):
+        labels = meta.get(key) if isinstance(meta.get(key), dict) else {}
+        facts[key] = {k: v for k, v in labels.items() if isinstance(v, str) and v.strip()}
     for direction, key in (("in", "incoming"), ("out", "outgoing")):
         edges = adjacent(gid, graph, direction)
         facts[key], facts[key + "_total"] = edges[:5], len(edges)
@@ -128,12 +132,27 @@ def render_card(facts: dict) -> str:
     ])
     if metrics.get("pass_through") is not None:
         lines.append(f"Отношение видимых исходящих к входящим: {shown(metrics['pass_through'])}; это не полный баланс.")
+    # These shares have different denominators and must not be conflated.
+    date_share = number(metrics.get("fast_forward_share"))
+    fifo_share = number(metrics.get("fast_transit_share"))
+    if date_share is not None:
+        lines.append(f"Близость дат: {date_share:.1%} исходящей суммы в пределах 0–2 дней от поступления; суммы не сопоставлены.")
+    if fifo_share is not None:
+        lines.append(f"FIFO-сопоставление: {fifo_share:.1%} входящей суммы сопоставлено с исходящими через 1–2 дня; это оценка по наблюдаемым переводам.")
+    for key in ("same_day_transit_share_upper_bound", "sync_in_days", "sync_max_payers",
+                "transit_observation_complete_share", "repeated_route_count"):
+        if number(metrics.get(key)) is not None:
+            lines.append(f"{facts.get('metric_labels', {}).get(key, key)}: {shown(metrics[key])}.")
     if facts["flags"]:
-        lines.append("Флаги: " + ", ".join(map(str, facts["flags"])) + ".")
+        labels = facts.get("flag_labels", {})
+        lines.append("Флаги: " + "; ".join(f"{labels[flag]} ({flag})" if flag in labels else flag
+                                          for flag in facts["flags"]) + ".")
     if number(facts.get("depth")) == 4 or "truncated_by_depth" in facts["flags"]:
         lines.append("Обрыв на четвёртом колене: отсутствие исходящих не доказывает, что деньги остались на счёте.")
     if facts.get("is_seed"):
         lines.append("Входящие seed-клиента занижены выборкой; коэффициент пропуска не отражает полный баланс.")
+    if "terminal_unknown" in facts["flags"] or metrics.get("terminal_unknown") is True:
+        lines.append("Конечный получатель не подтверждён: граница выборки или неполные входящие seed не позволяют установить оседание денег.")
     for key, title in (("incoming", "Входящие связи"), ("outgoing", "Исходящие связи")):
         links = facts[key]
         lines.append(f"{title} (показано {len(links)} из {facts[key + '_total']}): " +
