@@ -271,11 +271,25 @@ def _resilience(graph, nodes):
     return results
 
 
-def _network_features(nodes, edges, tx, per_node):
+def _build_graph(nodes, edges):
     graph = nx.DiGraph()
     graph.add_nodes_from(sorted(map(int, nodes.gid)))
     for row in edges.sort_values(["src", "dst"]).itertuples(index=False):
         graph.add_edge(int(row.src), int(row.dst), sum_kzt=float(row.sum_kzt), n_tx=int(row.n_tx))
+    return graph
+
+
+def compute_resilience(nodes: pd.DataFrame, edges: pd.DataFrame) -> list[dict]:
+    """Refresh only removal scenarios after the core computes priority_score."""
+    try:
+        return _resilience(_build_graph(nodes, edges), nodes)
+    except Exception as exc:
+        LOGGER.warning("Optional resilience unavailable: %s", exc)
+        return []
+
+
+def _network_features(nodes, edges, tx, per_node):
+    graph = _build_graph(nodes, edges)
     cycles, cycles_complete, cycle_steps = _bounded_cycles(graph)
     cycle_members = {gid for cycle in cycles for gid in cycle}
     per_node["in_cycle"] = per_node.gid.isin(cycle_members)

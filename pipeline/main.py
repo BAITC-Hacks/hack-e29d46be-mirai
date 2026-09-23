@@ -1,6 +1,7 @@
 """Оркестратор пайплайна: data/*.parquet → outputs/ (3 CSV + graph.json)."""
 
 import time
+import logging
 
 import pandas as pd
 from pathlib import Path
@@ -22,10 +23,15 @@ def _extras(nodes, edges, tx, df):
     except ImportError:
         return df, {}, []
     try:
-        per_node, global_ = compute_extras(nodes, edges, tx)
+        per_node, global_ = compute_extras(df.copy(deep=True), edges, tx)
+        if per_node.empty:
+            return df, {}, []
+        if ("gid" not in per_node or per_node.gid.duplicated().any()
+                or set(per_node.gid) != set(df.gid) or not isinstance(global_, dict)):
+            raise ValueError("extras must return exactly one row per input gid and a dict")
         per_node = per_node.drop(columns=[c for c in per_node if c != "gid" and c in df])
         bool_cols = [c for c in per_node if c != "gid" and per_node[c].dtype == bool]
-        return df.merge(per_node, on="gid", how="left"), global_, bool_cols
+        return df.merge(per_node, on="gid", how="left", validate="one_to_one"), global_, bool_cols
     except Exception as e:  # extras не должны ломать обязательную часть
         print(f"  ! extras пропущены: {e}")
         return df, {}, []
@@ -60,6 +66,15 @@ def run(data_dir: Path, out_dir: Path) -> dict:
     df, extras, extra_flags = _extras(nodes, edges, tx, df)
     df = _add_extra_flags(assign_roles(df, G), extra_flags)
     df = assign_priority(df)
+    # Resilience removes the nodes shown in the final priority list.
+    if "resilience" in extras:
+        try:
+            from pipeline.extras import compute_resilience
+            resilience = compute_resilience(df, edges)
+            if resilience:
+                extras["resilience"] = resilience
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Priority resilience unavailable: %s", exc)
     df, clusters = assign_clusters(G, df)
     top = top_nodes(df, C.TOP_N)
 
