@@ -1,7 +1,8 @@
 """Кластеры: Louvain на неориентированной взвешенной проекции.
 
 Для поиска сообществ суммируем встречные потоки в неориентированной проекции —
-направление денег сохраняется в ролях и в гипотезе кластера.
+направление денег сохраняется в ролях и свидетельствах отдельных связей.
+Гипотеза кластера описывает состав, но не утверждает наличие путей между ролями.
 """
 
 import networkx as nx
@@ -32,12 +33,12 @@ def _hypothesis(sub: pd.DataFrame, internal: float) -> str:
     n_seed = int(sub.is_seed.sum())
     n_coord, n_cons, n_dist, n_tr = (r.get(k, 0) for k in ("coordinator", "consolidator", "distributor", "transit"))
     if len(sub) <= 3:
-        return f"Изолированный фрагмент из {len(sub)} узлов, оборот {_kzt(internal)}"
+        return f"Небольшое сообщество: узлов — {len(sub)}, внутренний оборот {_kzt(internal)}"
     parts = []
     if n_coord:
         parts.append(f"есть {n_coord} кандидат(ов) в координаторы — возможное ядро группы")
     if n_cons and n_seed:
-        parts.append(f"сбор средств от {n_seed} seed в {n_cons} точк(и) консолидации")
+        parts.append(f"в составе: {n_seed} seed; узлов с признаками консолидации: {n_cons}")
     elif n_cons:
         parts.append(f"{n_cons} точк(и) консолидации")
     if n_dist:
