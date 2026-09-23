@@ -47,14 +47,15 @@ def test_contract_and_search(client):
     assert client.get("/api/node/nope").status_code == 422
 
 
-def test_reload_prefers_real_output_and_csv(client, tmp_path, graph):
+def test_reload_prefers_real_output_over_stale_csv(client, tmp_path, graph):
     assert len(client.get("/api/graph").json()["nodes"]) == 3
     graph["nodes"].append({"id": 777, "priority_score": 1})
     write_graph(tmp_path, graph, output=True)
     assert len(client.get("/api/graph").json()["nodes"]) == 4
     (tmp_path / "outputs/top_nodes.csv").write_text(
         "rank,gid,role,priority_score,why\n1,12,transit,0.5,Причина из CSV\n", encoding="utf-8")
-    assert client.get("/api/top").json()[0]["why"] == "Причина из CSV"
+    assert client.get("/api/top").json()[0]["gid"] == "777"
+    assert len(client.get("/api/top").json()) == 4
     graph["nodes"][0]["evidence"] = "Обновлено"
     write_graph(tmp_path, graph, output=True)
     assert client.get("/api/node/12").json()["node"]["evidence"] == "Обновлено"
@@ -137,7 +138,7 @@ def test_18_digit_ids_remain_exact(tmp_path, monkeypatch):
     assert client.get("/api/graph").json() == graph
     assert client.get(f"/api/search?q={second}").json()[0]["id"] == second
     assert client.get(f"/api/node/{first}").json()["neighbors"][0]["id"] == second
-    assert client.get("/api/top").json()[0]["gid"] == second
+    assert [row["gid"] for row in client.get("/api/top").json()] == [first, second]
     def card(gid, graph):
         assert gid == first and isinstance(gid, str)
         return {"text": gid, "source": "template"}
@@ -145,3 +146,4 @@ def test_18_digit_ids_remain_exact(tmp_path, monkeypatch):
         node_card=card, ask=lambda q, g: {"answer": second, "cited_gids": [first, second], "source": "fallback"}))
     assert client.get(f"/api/node/{first}/card").json()["text"] == first
     assert client.post("/api/ask", json={"question": "Проверка"}).json()["cited_gids"] == [first, second]
+
