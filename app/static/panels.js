@@ -306,18 +306,22 @@
     const why = section("Почему этот приоритет");
     why.append(element("p", "", n.priority_why || "Разложение приоритета пока не передано пайплайном."));
     why.append(element("p", "muted", "Приоритет задаёт порядок проверки, а не вероятность нарушения."));
+    const calculation = element("details", "calculation-details");
+    calculation.append(element("summary", "", "Как рассчитан приоритет"));
     if (Array.isArray(n.priority_components)) {
       const dl = element("dl", "metrics");
       for (const c of n.priority_components)
         if (c && Number.isFinite(c.contribution)) dl.append(element("dt", "", String(c.label || c.key)),
-          element("dd", "", metric(c.contribution)));
-      why.append(dl);
+          element("dd", "", metric(c.contribution, "priority_contribution")));
+      calculation.append(dl);
+      calculation.append(element("p", "muted", "Вклады в итоговую оценку; значения округлены."));
     }
     const stability = n.rank_stability;
-    if (stability && Number.isFinite(stability.min_rank) && Number.isFinite(stability.max_rank)) why.append(
+    if (stability && Number.isFinite(stability.min_rank) && Number.isFinite(stability.max_rank)) calculation.append(
       element("p", "muted", "Ранг в проверенных сценариях: " + stability.min_rank + "–" + stability
         .max_rank + "; попадание в топ-" + stability.top_k + ": " + metric(stability.top_k_share,
         "share") + ". Это чувствительность методики."));
+    if (calculation.children.length > 1) why.append(calculation);
     const nf = Array.isArray(n.flags) ? n.flags : [];
     if (nf.length) {
       const s = section("Сигналы"),

@@ -71,3 +71,6 @@ body.map-expanded .workspace {grid-template-columns:1fr;height:calc(100dvh - 118
 @media (max-width:950px) {.workspace {grid-template-columns:200px minmax(300px,1fr);height:auto}.details {grid-column:1/-1;height:600px}.graph-panel,.priorities {height:620px}.header-meta {display:none}.overview {padding:15px}.stats strong {font-size:18px}body.map-expanded .workspace {display:grid}}
 @media (max-width:600px) {.workspace {display:flex}.graph-panel {min-height:620px}.priorities {height:350px}.header {height:auto}.overview h1 {font-size:21px}.overview {align-items:stretch}.stats {gap:7px}.stats>div {padding-left:9px}.stats strong {font-size:16px}.details {width:100%;height:650px}.graph-toolbar select {max-width:140px}.footer {font-size:9px;height:auto}}
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important}.spinner {animation:none}}
+
+.calculation-details {margin-top:12px;font-size:12px;line-height:1.6}
+.calculation-details summary {cursor:pointer;color:#b8d3ff}

@@ -201,7 +201,7 @@
       style: "percent",
       maximumFractionDigits: 1
     });
-    if (["pagerank", "seed_exposure", "betweenness"].includes(key) || (value !== 0 && Math.abs(value) <
+    if (["pagerank", "seed_exposure", "betweenness", "priority_contribution"].includes(key) || (value !== 0 && Math.abs(value) <
       .01)) return value.toLocaleString("ru-RU", {
       maximumSignificantDigits: 4
     });
