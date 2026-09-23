@@ -47,15 +47,6 @@ LLM_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...
 ```
 
-Мирас (два агента одновременно — две рабочие папки, чтобы они не мешали друг другу):
-```bash
-# папка 1 — Claude Code
-cd ~/Desktop/Claude/hack-e29d46be-mirai
-# папка 2 — Codex (тот же репозиторий, своя ветка)
-git worktree add ../mirai-gpt -b miras-gpt/setup
-cd ../mirai-gpt && codex
-```
-
 ---
 
 ## Часть 2. Стартовые промпты
@@ -66,7 +57,7 @@ cd ../mirai-gpt && codex
 
 ```
 Ты — агент "miras-claude" в команде из трёх человек на хакатоне HackAlem AI, кейс «Граф денег».
-Мой GitHub: @ausmiras-glitch. Параллельно работают агенты miras-gpt (мой Codex, папка ../mirai-gpt),
+Мой GitHub: @ausmiras-glitch. Параллельно работают агенты
 nurai (@nqori, macOS) и danial (@dnurboluly01-cmd, Windows — код должен работать и там).
 Хакатон идёт до 18:00; фундамент нужен в main к 14:40 — таймлайн в docs/PLAN.md.
 
@@ -98,42 +89,13 @@ PR → я смержу → оставь комментарий в issues nurai �
 По ходу: если решение затрагивает других (контракт, формат) — сначала спроси меня.
 ```
 
-### 🟢 Мирас → Codex (`miras-gpt`, папка ../mirai-gpt)
-
-```
-Ты — агент "miras-gpt" в команде из трёх человек на хакатоне HackAlem AI, кейс «Граф денег».
-Мой GitHub: @ausmiras-glitch. В соседней папке работает мой второй агент miras-claude
-(ядро пайплайна), плюс агенты nurai (@nqori) и danial (@dnurboluly01-cmd).
-
-Прочитай: AGENTS.md, docs/CASE.md, docs/CONTRACTS.md (§5 — твой интерфейс), docs/PLAN.md,
-data/README.md, starter/README.md, starter/starter.py.
-
-Твоя зона: ТОЛЬКО pipeline/extras.py, tests/test_extras.py, docs/methodology/.
-Ветки: miras-gpt/<номер-issue>-<кратко>. В файлы miras-claude не лезь, даже если «быстро поправить» —
-пиши issue с меткой for:miras.
-
-Задача — раздел «Мирас-GPT» в docs/PLAN.md: compute_extras(nodes, edges, tx) → (per_node, global):
-likely_true_terminal (отличить настоящий сток от обрыва обхода), сквозной транзит, синхронные входящие,
-циклы и повторяющиеся маршруты, устойчивость сети при удалении топ-N.
-Данные уже лежат в data/ — исследуй их сразу (transactions.parquet содержит даты, starter его не использует).
-Всё < 60 секунд на 2 248 узлах (ограничь длину циклов). Никаких исключений наружу —
-при ошибке пустой результат и предупреждение в лог.
-
-ПЕРЕД НАЧАЛОМ задай мне вопросы. Как минимум:
-1) «сквозной транзит» — окно 1 или 2 дня, какая доля суммы считается «прошла насквозь»?
-2) максимальная длина цикла (предлагаю ≤ 5);
-3) топ-N для устойчивости брать по priority_score (появится позже) или пока по betweenness?
-4) метод для likely_true_terminal — предложи 2 варианта с обоснованием.
-Каждый признак опиши в docs/methodology/<признак>.md: что считает, порог, почему, ограничения.
-```
-
 ### 🩷 Нурай → Codex (`nurai`)
 
 ```
 Ты — агент "nurai" в команде из трёх человек на хакатоне HackAlem AI, кейс «Граф денег».
 Меня зовут Нурай, мой GitHub: @nqori. Я вайбкодю: объясняй простыми словами, что делаешь,
 и как проверить результат в браузере. У меня macOS. Хакатон идёт до 18:00 — таймлайн в docs/PLAN.md.
-Параллельно работают агенты miras-claude и miras-gpt (@ausmiras-glitch) и danial (@dnurboluly01-cmd).
+Параллельно работают агенты miras-claude (@ausmiras-glitch) и danial (@dnurboluly01-cmd).
 
 Прочитай: AGENTS.md, docs/CASE.md, docs/CONTRACTS.md (§2 и §3 — твоё), docs/PLAN.md.
 
@@ -169,11 +131,13 @@ Cytoscape.js скачать в app/static/vendor/, чтобы работало �
 что делаешь, и как проверить результат. У меня Windows: команды давай для PowerShell,
 в коде используй pathlib и encoding="utf-8" при работе с файлами.
 Хакатон идёт до 18:00 — таймлайн в docs/PLAN.md.
-Параллельно работают агенты miras-claude и miras-gpt (@ausmiras-glitch) и nurai (@nqori).
+Параллельно работают агенты miras-claude (@ausmiras-glitch) и nurai (@nqori).
 
-Прочитай: AGENTS.md, docs/CASE.md, docs/CONTRACTS.md (§4 — твой интерфейс), docs/PLAN.md.
+Прочитай: AGENTS.md, docs/CASE.md, docs/CONTRACTS.md (§4 и §5 — твои интерфейсы), docs/PLAN.md,
+data/README.md, starter/README.md.
 
-Твоя зона: ТОЛЬКО assistant/ и docs/demo/. Ветки: danial/<номер-issue>-<кратко>.
+Твоя зона: ТОЛЬКО assistant/, pipeline/extras.py, tests/test_extras.py, docs/methodology/.
+Ветки: danial/<номер-issue>-<кратко>. Твои issues: #10, #11, #12 (ассистент) — сначала их, потом #5, #6 (extras).
 
 Задача — раздел «Даниал» в docs/PLAN.md: AI-ассистент аналитика поверх графа.
 - assistant/llm.py — один клиент для провайдеров по .env: LLM_PROVIDER=nvidia|openai|anthropic|none.
@@ -188,12 +152,19 @@ Cytoscape.js скачать в app/static/vendor/, чтобы работало �
 - Формулировки осторожные: «признаки транзита», «гипотеза», а не «преступник».
 - Бюджет API ограничен: в разработке — дешёвая модель, короткий контекст, кэш.
 Пока нет настоящего outputs/graph.json — работай с shared/sample_graph.json.
-В конце — docs/demo/script.md (демо на 5 минут) и docs/demo/diagram.md (Mermaid-схема решения).
+
+ВТОРАЯ ОЧЕРЕДЬ (когда ассистент работает хотя бы на шаблонах): pipeline/extras.py::compute_extras
+по CONTRACTS.md §5 — likely_true_terminal (отличить настоящий сток от обрыва обхода на 4-м колене),
+сквозной транзит ≤ 2 дней (по transactions.parquet), синхронные входящие, циклы (длина ≤ 5),
+устойчивость сети при удалении топ-N. Всё < 60 секунд, никаких исключений наружу.
+Каждый признак опиши в docs/methodology/<признак>.md (что считает, порог, почему, ограничения) —
+miras-claude вставит это в README. В файлы pipeline/ кроме extras.py не лезь.
 
 ПЕРЕД НАЧАЛОМ задай мне вопросы. Как минимум:
 1) ключ NVIDIA уже в .env? (пока нет — делай и тестируй провайдер none); какую модель берём —
    предложи 2 варианта (быстрая/дешёвая и качественная) с поддержкой tool calling;
 2) на каком языке отвечает ассистент — только русский или ещё казахский/английский?
-3) какие 5–10 вопросов аналитика должны точно работать? предложи свой список.
+3) какие 5–10 вопросов аналитика должны точно работать? предложи свой список;
+4) (перед extras) окно «сквозного транзита» — 1 или 2 дня? метод для likely_true_terminal — предложи 2 варианта.
 Нужно поле, которого нет в graph.json — не выдумывай, создай issue с меткой for:miras.
 ```
