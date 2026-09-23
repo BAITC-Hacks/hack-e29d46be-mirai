@@ -1,6 +1,8 @@
 """Оркестратор пайплайна: data/*.parquet → outputs/ (3 CSV + graph.json)."""
 
 import time
+
+import pandas as pd
 from pathlib import Path
 
 from pipeline import config as C
@@ -30,12 +32,20 @@ def _extras(nodes, edges, tx, df):
 
 
 def _add_extra_flags(df, bool_cols):
-    """Булевы признаки из extras (например in_cycle, sync_inflow) → в список flags узла."""
-    if not bool_cols:
-        return df
+    """Значимые признаки из extras → в список flags узла (без дублей).
+
+    Во флаги попадают только признаки из config.EXTRA_FLAGS: массовые пометки вроде
+    «не seed и без исходящих» на тысяче узлов только зашумили бы карточки.
+    """
     df = df.copy()
-    df["flags"] = [f + [c for c in bool_cols if row.get(c) is True]
-                   for f, row in zip(df["flags"], df[bool_cols].to_dict("records"))]
+    extra = {c: df[c].fillna(False).astype(bool) for c in bool_cols if c in C.EXTRA_FLAGS}
+    if "sync_in_days" in df:
+        extra["sync_inflow"] = df["sync_in_days"].fillna(0) > 0
+    if not extra:
+        return df
+    extra_df = pd.DataFrame(extra, index=df.index)
+    df["flags"] = [list(dict.fromkeys(f + [c for c in extra_df.columns if row[c]]))
+                   for f, (_, row) in zip(df["flags"], extra_df.iterrows())]
     return df
 
 
