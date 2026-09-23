@@ -41,11 +41,15 @@ for group in range(3):
         add(s, cons, 1)
     trans = next(gid)                       # transit: пропускает дальше
     edges.append((cons, trans, 2_000_000.0, 2, 2)); depth[trans] = 2
+    trans2 = next(gid)                      # второй транзит в цепочке
+    edges.append((trans, trans2, 1_980_000.0, 2, 3)); depth[trans2] = 3
     dist = next(gid)                        # distributor: веер
-    edges.append((trans, dist, 1_950_000.0, 2, 3)); depth[dist] = 3
+    edges.append((trans2, dist, 1_950_000.0, 2, 3)); depth[dist] = 3
     for _ in range(21):
         add(dist, next(gid), 4)             # хвост 4-го колена (truncated_by_depth)
-    add(cons, next(gid), 2)                 # terminal: пришло и осталось
+    term = next(gid)                        # terminal: пришло от нескольких и осталось
+    add(cons, term, 2)
+    add(seeds[0], term, 1)
 
 nodes = pd.DataFrame({"gid": list(depth), "depth": list(depth.values())})
 nodes["is_seed"] = nodes.gid.isin([g for g, d in depth.items() if d == 0][::2])
@@ -54,13 +58,14 @@ edges_df = edges_df.groupby(["src", "dst"], as_index=False).agg(
     sum_kzt=("sum_kzt", "sum"), n_tx=("n_tx", "sum"), depth=("depth", "min"))
 
 G = build_graph(edges_df, nodes)
-df = assign_roles(node_metrics(G, nodes))
+df = assign_roles(node_metrics(G, nodes), G)
 # в моке один консолидатор помечен coordinator, чтобы в интерфейсе были видны все 6 ролей
-first_cons = df.index[df.role == "consolidator"][0]
-df.loc[first_cons, ["role", "evidence"]] = ["coordinator", "МОК: координирующий узел, связывает цепочки"]
-df, clusters = assign_clusters(G, df)
+if not (df.role == "coordinator").any():
+    first_cons = df.index[df.role == "consolidator"][0]
+    df.loc[first_cons, ["role", "evidence"]] = ["coordinator", "МОК: координирующий узел, связывает цепочки"]
 df = assign_priority(df)
-graph = build_graph_json(df, edges_df, clusters, compute_layout(G, scale=600),
+df, clusters = assign_clusters(G, df)
+graph = build_graph_json(df, edges_df, clusters, compute_layout(G, dict(zip(df.gid, df.cluster_id))),
                          {"resilience": [{"removed_top_n": 3, "largest_component_share": 0.4, "n_components": 9}],
                           "cycles": []})
 graph["meta"]["mock"] = True
