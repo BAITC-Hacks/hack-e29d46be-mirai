@@ -25,6 +25,31 @@ def _pct(x: float) -> str:
     return "—" if x is None or np.isnan(x) else f"{x:.0%}"
 
 
+def _item(label, gid, pairs):
+    pairs = sorted(set(pairs))
+    return {"label": label, "gids": [str(g) for g in sorted({gid} | {g for pair in pairs for g in pair})],
+            "edges": [{"source": str(a), "target": str(b)} for a, b in pairs]}
+
+
+def _role_items(row, graph):
+    """Structural witnesses, not attribution of the same money across transfers."""
+    g = row.gid
+    incoming = [(p, g) for p in graph.predecessors(g)]
+    outgoing = [(g, s) for s in graph.successors(g)]
+    items = []
+    if incoming:
+        items.append(_item(f"Входящие: {len(incoming)} плательщиков, {_kzt(row.in_kzt)}", g, incoming))
+    if outgoing:
+        items.append(_item(f"Исходящие: {len(outgoing)} получателей, {_kzt(row.out_kzt)}", g, outgoing))
+    if not outgoing:
+        label = ("4-е колено: дальнейшие переводы не выгружены" if row.truncated_by_depth
+                 else "Исходящих в наблюдаемой выборке нет; полный баланс неизвестен")
+        items.append(_item(label, g, []))
+    if row.is_seed:
+        items.append(_item("Seed: входящие видны не полностью", g, []))
+    return items
+
+
 def thresholds(df: pd.DataFrame) -> dict:
     return {
         "cons_in": max(C.CONSOLIDATOR_IN_DEG_MIN, float(df.in_deg.quantile(C.CONSOLIDATOR_IN_DEG_Q))),
@@ -105,14 +130,19 @@ def _coordinators(G: nx.DiGraph, df: pd.DataFrame, t: dict) -> dict:
         down_dist = [s for s in G.successors(g) if s in distributors]
         flow = f"вход {G.in_degree(g)} ({_kzt(G.in_degree(g, weight='sum_kzt'))}), выход {G.out_degree(g)}"
         if len(up_coll) >= C.COORDINATOR_MIN_UP_COLLECTORS:
-            out[g] = (0.9, f"Получает от {len(up_coll)} точек сбора — второй уровень консолидации; {flow}")
+            out[g] = (0.9, f"Получает от {len(up_coll)} точек сбора — второй уровень консолидации; {flow}",
+                      _item("Поступления от точек сбора (роли первого прохода)", g, [(p, g) for p in up_coll]))
         elif up_coll and down_dist:
             out[g] = (0.8, f"Связка сбор→раздача: получает от точки сбора, передаёт {len(down_dist)} "
-                           f"распределителям; {flow}")
+                           f"распределителям; {flow}",
+                      _item("Связка сбор → клиент → раздача (роли первого прохода)", g,
+                            [(p, g) for p in up_coll] + [(g, s) for s in down_dist]))
         elif (role[g] in ("consolidator", "distributor") and betw.get(g, 0) >= t["betw"]
               and (up_coll or down_dist)):
             out[g] = (0.7, f"Верхний 1% по посредничеству, связан с {len(up_coll) + len(down_dist)} "
-                           f"ключевыми узлами; {flow}")
+                           f"ключевыми узлами; {flow}",
+                      _item("Связи с ключевыми узлами; посредничество в верхнем 1%", g,
+                            [(p, g) for p in up_coll] + [(g, s) for s in down_dist]))
     return out
 
 
@@ -124,12 +154,15 @@ def assign_roles(df: pd.DataFrame, G: nx.DiGraph | None = None) -> pd.DataFrame:
     out["role_score"] = [round(float(x[1]), 3) for x in res]
     out["evidence"] = [x[2] for x in res]
     out["flags"] = [x[3] for x in res]
+    out["evidence_items"] = ([_role_items(r, G) for r in out.itertuples(index=False)]
+                             if G is not None else [[] for _ in range(len(out))])
 
     if G is not None:
-        for g, (score, ev) in _coordinators(G, out, t).items():
+        for g, (score, ev, witness) in _coordinators(G, out, t).items():
             i = out.index[out.gid == g][0]
             prev = out.at[i, "role"]
             out.at[i, "role"] = "coordinator"
+            out.at[i, "evidence_items"] = [witness] + out.at[i, "evidence_items"]
             out.at[i, "role_score"] = score
             names = {"consolidator": "сборщик", "distributor": "распределитель", "transit": "транзит"}
             out.at[i, "evidence"] = ev + (f"; сам — {names[prev]}" if prev in names else "")

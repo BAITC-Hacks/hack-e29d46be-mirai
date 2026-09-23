@@ -2,6 +2,8 @@
 
 import time
 import logging
+import hashlib
+import json
 
 import pandas as pd
 from pathlib import Path
@@ -29,6 +31,7 @@ def _extras(nodes, edges, tx, df):
         if ("gid" not in per_node or per_node.gid.duplicated().any()
                 or set(per_node.gid) != set(df.gid) or not isinstance(global_, dict)):
             raise ValueError("extras must return exactly one row per input gid and a dict")
+        json.dumps(global_, allow_nan=False)  # malformed optional data must not break export
         per_node = per_node.drop(columns=[c for c in per_node if c != "gid" and c in df])
         bool_cols = [c for c in per_node if c != "gid" and per_node[c].dtype == bool]
         return df.merge(per_node, on="gid", how="left", validate="one_to_one"), global_, bool_cols
@@ -80,6 +83,14 @@ def run(data_dir: Path, out_dir: Path) -> dict:
 
     write_csvs(df, clusters, top, out_dir)
     graph = build_graph_json(df, edges, clusters, compute_layout(G, dict(zip(df.gid, df.cluster_id))), extras)
+    digest = hashlib.sha256()
+    for filename in ("nodes.parquet", "edges.parquet", "transactions.parquet"):
+        digest.update(filename.encode())
+        digest.update((data_dir / filename).read_bytes())
+    graph["meta"].update(dataset_version="sha256:" + digest.hexdigest(),
+                         period_start=tx.date.min().date().isoformat(),
+                         period_end=tx.date.max().date().isoformat(),
+                         data_source="Организатор: nodes.parquet, edges.parquet, transactions.parquet")
     write_graph_json(graph, out_dir / "graph.json")
     validate(out_dir, len(nodes))
     print(f"  роли: {df.role.value_counts().to_dict()}")

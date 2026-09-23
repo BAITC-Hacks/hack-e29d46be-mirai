@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipeline import config as C
+from pipeline.priority import stability_scenarios
 
 METRIC_COLS = ["in_deg", "out_deg", "in_kzt", "out_kzt", "in_tx", "out_tx", "pagerank", "pass_through",
                "seed_exposure", "n_seed_up2", "betweenness", "fast_forward_share",
@@ -45,6 +46,9 @@ def build_graph_json(df: pd.DataFrame, edges: pd.DataFrame, clusters: pd.DataFra
             "role": r.role, "role_score": float(r.role_score), "cluster_id": int(r.cluster_id),
             "priority_score": float(r.priority_score), "rank": int(r.rank), "evidence": r.evidence,
             "priority_why": getattr(r, "priority_why", ""),
+            "evidence_items": getattr(r, "evidence_items", []),
+            "priority_components": getattr(r, "priority_components", []),
+            "rank_stability": getattr(r, "rank_stability", {}),
             "metrics": {c: _clean(getattr(r, c)) for c in METRIC_COLS if hasattr(r, c)},
             "flags": list(r.flags) if hasattr(r, "flags") else [],
             "x": x, "y": y,
@@ -55,6 +59,8 @@ def build_graph_json(df: pd.DataFrame, edges: pd.DataFrame, clusters: pd.DataFra
             "n_nodes": len(df), "n_edges": len(edges), "total_kzt": _clean(float(edges.sum_kzt.sum())),
             "roles": C.ROLES, "role_colors": C.ROLE_COLORS,
             "metric_labels": C.METRIC_LABELS, "flag_labels": C.FLAG_LABELS,
+            "rank_stability_scenarios": stability_scenarios(),
+            "cluster_method": "Louvain; undirected weight=sum of both directions; sorted gids; seed=42",
         },
         "nodes": nodes,
         "edges": [{"source": str(e.src), "target": str(e.dst), "sum_kzt": _clean(float(e.sum_kzt)),
