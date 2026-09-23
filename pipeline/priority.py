@@ -16,7 +16,7 @@ LABELS = {
     "betweenness": "посредничество (через узел идут пути)",
     "behavior": "поведенческие признаки",
 }
-BEHAVIOR_FLAGS = {"fast_transit", "gather_scatter", "in_cycle", "sync_inflow"}
+BEHAVIOR_FLAGS = {"gather_scatter", "in_cycle", "sync_inflow"}
 
 
 def _components(df: pd.DataFrame) -> pd.DataFrame:
@@ -26,7 +26,9 @@ def _components(df: pd.DataFrame) -> pd.DataFrame:
     comp["volume"] = np.maximum(df.in_kzt, df.out_kzt).rank(pct=True)
     comp["betweenness"] = df.betweenness.rank(pct=True) if "betweenness" in df else 0.0
     fast = df.fast_forward_share.fillna(0) if "fast_forward_share" in df else 0.0
-    n_flags = df["flags"].map(lambda f: len(BEHAVIOR_FLAGS & set(f)))
+    # Both temporal signals support one behavior family; never count it twice.
+    n_flags = df["flags"].map(lambda f: len(BEHAVIOR_FLAGS & set(f))
+                            + int(bool({"fast_transit", "rapid_outflow"} & set(f))))
     comp["behavior"] = np.clip(0.5 * fast + 0.25 * n_flags, 0, 1)
     return comp
 
