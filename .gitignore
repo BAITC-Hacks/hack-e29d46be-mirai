@@ -1,0 +1,22 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# local runs / caches
+out/
+.cache/
+
+# deps / builds
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+.next/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
