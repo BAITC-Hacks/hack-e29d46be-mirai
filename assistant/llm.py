@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
-import time
+import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -16,13 +17,33 @@ from urllib.request import Request, urlopen
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+except (ImportError, OSError, ValueError):
     pass
 
 DEFAULT_NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_TIMEOUT = 20
+
+
+def _setting(name: str, default: str = "") -> str:
+    return os.getenv(name, "").strip() or default
+
+
+def _positive(value: Any, default: float, maximum: float) -> float:
+    try:
+        number = float(value)
+        return min(number, maximum) if math.isfinite(number) and number > 0 else default
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _valid_response(value: Any) -> bool:
+    return (isinstance(value, dict) and isinstance(value.get("content"), str)
+            and isinstance(value.get("tool_calls"), list)
+            and all(isinstance(call, dict) and isinstance(call.get("name"), str)
+                    and isinstance(call.get("arguments"), dict)
+                    for call in value["tool_calls"]))
 
 
 def _cache_path(key: str) -> Path:
@@ -44,13 +65,11 @@ def _openai_call(provider: str, messages: list[dict[str, Any]], tools: list[dict
         from openai import OpenAI
 
         if provider == "nvidia":
-            api_key = os.getenv("NVIDIA_API_KEY", "")
-            base_url = os.getenv("NVIDIA_BASE_URL", DEFAULT_NVIDIA_BASE_URL)
-            model = os.getenv("LLM_MODEL", DEFAULT_NVIDIA_MODEL)
+            api_key = _setting("NVIDIA_API_KEY")
+            base_url = _setting("NVIDIA_BASE_URL", DEFAULT_NVIDIA_BASE_URL)
         else:
-            api_key = os.getenv("OPENAI_API_KEY", "")
-            base_url = os.getenv("OPENAI_BASE_URL") or None
-            model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+            api_key = _setting("OPENAI_API_KEY")
+            base_url = _setting("OPENAI_BASE_URL") or None
         if not api_key:
             return None
         client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
@@ -59,11 +78,15 @@ def _openai_call(provider: str, messages: list[dict[str, Any]], tools: list[dict
             "messages": messages,
             "temperature": 0.2,
             "timeout": timeout,
+            "max_tokens": int(_positive(_setting("LLM_MAX_TOKENS"), 700, 2000)),
         }
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
-        response = client.chat.completions.create(**kwargs)
+        try:
+            response = client.chat.completions.create(**kwargs)
+        finally:
+            client.close()
         message = response.choices[0].message
         calls = []
         for item in (getattr(message, "tool_calls", None) or []):
@@ -74,11 +97,10 @@ def _openai_call(provider: str, messages: list[dict[str, Any]], tools: list[dict
 
 
 def _anthropic_call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None,
-                    timeout: float) -> dict[str, Any] | None:
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+                    model: str, timeout: float) -> dict[str, Any] | None:
+    api_key = _setting("ANTHROPIC_API_KEY")
     if not api_key:
         return None
-    model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
     system_parts = [str(m.get("content", "")) for m in messages if m.get("role") == "system"]
     converted: list[dict[str, Any]] = []
     pending_tool_results: list[dict[str, Any]] = []
@@ -120,7 +142,7 @@ def _anthropic_call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] 
     flush_tool_results()
     payload: dict[str, Any] = {
         "model": model,
-        "max_tokens": int(os.getenv("LLM_MAX_TOKENS", "700")),
+        "max_tokens": int(_positive(_setting("LLM_MAX_TOKENS"), 700, 2000)),
         "messages": converted,
     }
     if system_parts:
@@ -159,29 +181,36 @@ def _anthropic_call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] 
         return None
 
 
-def call_model(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
-               *, timeout: float | None = None) -> dict[str, Any] | None:
+def _call_model(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
+                *, timeout: float | None = None) -> dict[str, Any] | None:
     """Call the configured provider, or return None for none/unavailable/failure.
 
     Results are cached on disk by provider, model, messages, and tool schema. API
     credentials are never included in the cache key or stored in cache files.
     """
-    provider = os.getenv("LLM_PROVIDER", "none").strip().lower()
+    provider = _setting("LLM_PROVIDER", "none").lower()
     if provider not in {"nvidia", "openai", "anthropic"}:
         return None
-    timeout_value = max(1.0, min(float(timeout or os.getenv("LLM_TIMEOUT", DEFAULT_TIMEOUT)), 60.0))
-    if provider == "nvidia":
-        model = os.getenv("LLM_MODEL", DEFAULT_NVIDIA_MODEL)
-    elif provider == "openai":
-        model = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    else:
-        model = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+    timeout_value = _positive(_setting("LLM_TIMEOUT"), DEFAULT_TIMEOUT, DEFAULT_TIMEOUT)
+    if timeout is not None:
+        timeout_value = min(timeout_value, _positive(timeout, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT))
+    defaults = {"nvidia": DEFAULT_NVIDIA_MODEL, "openai": "gpt-4o-mini",
+                "anthropic": "claude-haiku-4-5-20251001"}
+    model = _setting("LLM_MODEL", defaults[provider])
+    key_name = {"nvidia": "NVIDIA_API_KEY", "openai": "OPENAI_API_KEY",
+                "anthropic": "ANTHROPIC_API_KEY"}[provider]
+    if not _setting(key_name):
+        return None
 
     cache_payload = {
         "provider": provider,
         "model": model,
         "messages": messages,
         "tools": tools or [],
+        "version": 2,
+        "base_url": (_setting("NVIDIA_BASE_URL", DEFAULT_NVIDIA_BASE_URL) if provider == "nvidia"
+                     else _setting("OPENAI_BASE_URL") if provider == "openai" else "anthropic"),
+        "max_tokens": int(_positive(_setting("LLM_MAX_TOKENS"), 700, 2000)),
     }
     cache_key = hashlib.sha256(
         json.dumps(cache_payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
@@ -190,22 +219,40 @@ def call_model(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
     try:
         if path.is_file():
             cached = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(cached, dict) and "content" in cached and "tool_calls" in cached:
+            if _valid_response(cached):
                 return cached
     except (OSError, ValueError):
         pass
 
     if provider == "anthropic":
-        result = _anthropic_call(messages, tools, timeout_value)
+        result = _anthropic_call(messages, tools, model, timeout_value)
     else:
         result = _openai_call(provider, messages, tools, model, timeout_value)
-    if result is None:
+    if not _valid_response(result):
         return None
+    temp_path = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_suffix(".tmp")
-        temp_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         suffix=".tmp", delete=False) as handle:
+            temp_path = Path(handle.name)
+            json.dump(result, handle, ensure_ascii=False)
         temp_path.replace(path)
     except OSError:
         pass
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
     return result
+
+
+def call_model(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
+               *, timeout: float | None = None) -> dict[str, Any] | None:
+    """Provider, configuration and cache failures never escape this boundary."""
+    try:
+        return _call_model(messages, tools, timeout=timeout)
+    except Exception:
+        return None
