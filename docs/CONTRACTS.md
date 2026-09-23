@@ -12,12 +12,12 @@
 data/*.parquet
    │
    ▼
-pipeline/  (Мирас: Claude + GPT)          python run.py  ─┐
+pipeline/  (Мирас-Claude; extras.py — Даниал)          python run.py  ─┐
    ├─ metrics.py   — метрики узлов                         │ 1. считает пайплайн (< 5 мин)
    ├─ roles.py     — правила ролей + evidence              │ 2. запускает сервер
    ├─ clusters.py  — Louvain + гипотезы                    │
    ├─ priority.py  — priority_score, top_nodes             │
-   ├─ extras.py    — временные паттерны, циклы, устойчивость (Мирас-GPT)
+   ├─ extras.py    — временные паттерны, циклы, устойчивость (Даниал)
    └─ export.py    — 3 CSV + outputs/graph.json            │
    │                                                       │
    ▼                                                       │
@@ -131,10 +131,10 @@ def ask(question: str, graph: dict) -> dict:
 - Нет ключа / ошибка API → шаблонный ответ из метрик, **никаких исключений наружу**.
 - Провайдер через `.env`: `LLM_PROVIDER=nvidia|openai|anthropic|none`.
 
-## 5. Интерфейс extras (внутри зоны Мираса)
+## 5. Интерфейс extras (зона Даниала, вызывается из ядра Мираса)
 
 ```python
-# pipeline/extras.py  (Мирас-GPT)
+# pipeline/extras.py  (Даниал)
 def compute_extras(nodes: pd.DataFrame, edges: pd.DataFrame, tx: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     per_node: DataFrame[gid, fast_transit_share, sync_in_days, in_cycle, likely_true_terminal, ...]
