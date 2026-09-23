@@ -1,0 +1,78 @@
+/* Focus on the working area at laptop sizes. */
+.header {height:68px}
+.overview {padding:14px 24px 16px}
+.overview h1 {font-size:23px;margin:4px 0}
+.overview .eyebrow {display:none}
+.workspace {height:calc(100dvh - 195px);min-height:520px;grid-template-columns:235px minmax(350px,1fr) 330px}
+.graph-heading {padding:14px 16px 10px}
+.graph-tag {display:none}
+.graph-toolbar {justify-content:flex-start;gap:6px;padding:0 12px 8px}
+.graph-toolbar select {max-width:160px;font-size:11px;height:30px;padding:4px 6px}
+.segmented button {font-size:11px}
+.investigation-toolbar {display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:0 12px 8px}
+.investigation-toolbar button,.graph-menu summary {font-size:11px;padding:6px 8px}
+.graph-menu {position:relative;margin-left:auto;z-index:6}
+.graph-menu summary {cursor:pointer;border:1px solid var(--line);border-radius:5px;background:var(--raised)}
+.graph-menu>div {position:absolute;right:0;top:34px;min-width:170px;display:flex;flex-direction:column;gap:5px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 25px #0009}
+.selection-bar {padding:7px 14px;background:#172838;color:#c1d6e9;font-size:11px;display:flex;align-items:center;justify-content:space-between;gap:7px;min-height:32px;overflow-wrap:anywhere}
+.selection-bar button {font-size:10px;padding:3px 5px;flex-shrink:0}
+.graph-canvas {background-image:none;min-height:220px}
+.graph-help-text {font-size:10px;line-height:1.5;color:#a9b9cb;padding:7px 13px;border-bottom:1px solid var(--line)}
+.legend {padding:9px 12px;gap:7px 12px}
+.legend .badge,.boundary-key {font-size:10px}
+.boundary-key {color:#edbd79}
+.zoom-controls {bottom:14px;right:12px;background:#101a27b0;border-radius:6px;padding:4px}
+#zoom-level {font-size:10px;text-align:center;color:#b9ccec}
+.panel-description,.sidebar-foot {font-size:11px}
+.top-row {padding:12px 13px}
+.node-label strong {font-size:12px}
+.badge {font-size:10px}
+.node-header {padding:18px 16px 13px}
+.node-section {padding:14px 16px}
+.node-section h3 {font-size:11px;letter-spacing:.6px}
+.node-section>p,.ai-response {font-size:13px;line-height:1.7}
+.node-section .muted {font-size:11px;margin-top:8px}
+.evidence {font-size:13px;line-height:1.7}
+.warning {font-size:12px;line-height:1.6}
+.metrics {font-size:12px;margin-top:14px;gap:10px}
+.metrics dd {max-width:145px}
+.text-action {background:transparent;color:#b8d3ff;border:0;padding:7px 0;font-size:12px;display:block;text-align:left;overflow-wrap:anywhere}
+.return-chat {margin:10px 14px 0;padding:7px 9px;font-size:11px;color:#b8d3ff;text-align:left}
+.card-actions,.proof-actions {display:flex;gap:7px;flex-wrap:wrap}
+.card-actions button,.proof-actions button,.node-section>button {font-size:11px;padding:7px 8px}
+.proof-actions {margin-top:12px}
+.connections {padding:14px 16px}
+.connections summary {font-size:12px}
+.connection-list button {flex-wrap:wrap;gap:4px;font-size:12px}
+.connection-list button span {font-size:11px}
+.flag {font-size:11px;line-height:1.4}
+.compare-table {width:100%;border-collapse:collapse;margin:12px 0;font-size:11px;table-layout:fixed}
+.compare-table th,.compare-table td {border-bottom:1px solid var(--line);padding:8px 4px;text-align:left;overflow-wrap:anywhere}
+.compare-table th:first-child {width:40%}
+.flow-arrow {font-size:22px;color:var(--mint);margin:10px}
+.node-section .gid-link {font-size:14px;overflow-wrap:anywhere}
+.bookmarks-panel {border-top:1px solid var(--line);padding:10px 12px;font-size:12px;max-height:160px;overflow:auto}
+.bookmarks-panel summary {cursor:pointer}
+.bookmark-row {display:flex;gap:4px;margin-top:7px}
+.bookmark-row button {padding:5px;font-size:10px;overflow-wrap:anywhere;min-width:0}
+.bookmark-row button:first-child {flex:1;text-align:left}
+#bookmarks>.muted {font-size:11px;padding-top:10px;line-height:1.5}
+.chat-context {padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:7px;align-items:flex-start;font-size:11px;color:#b8cce0;overflow-wrap:anywhere}
+.chat-context input {margin-top:1px;accent-color:var(--mint)}
+.message-body {font-size:13px}
+.chat-intro p,.suggestions button {font-size:12px}
+.map-action {display:block;margin-top:8px;font-size:12px;color:var(--mint)}
+.sample-warning {color:#ffd58e;font-weight:600}
+body.map-expanded .priorities,body.map-expanded .details,body.map-expanded .overview {display:none}
+body.map-expanded .workspace {grid-template-columns:1fr;height:calc(100dvh - 118px);padding-top:10px}
+.footer {height:38px;font-size:10px}
+@media (min-width:1500px) {.workspace {grid-template-columns:265px minmax(400px,1fr) 370px}}
+@media (max-width:1150px) {.workspace {grid-template-columns:210px minmax(320px,1fr) 290px;padding:0 10px;gap:8px}.stats {gap:18px}.header {padding:0 18px}.brand {width:190px}.graph-toolbar select {max-width:145px}}
+@media (max-width:950px) {.workspace {grid-template-columns:200px minmax(300px,1fr);height:auto}.details {grid-column:1/-1;height:600px}.graph-panel,.priorities {height:620px}.header-meta {display:none}.overview {padding:15px}.stats strong {font-size:18px}body.map-expanded .workspace {display:grid}}
+@media (max-width:600px) {.workspace {display:flex}.graph-panel {min-height:620px}.priorities {height:350px}.header {height:auto}.overview h1 {font-size:21px}.overview {align-items:stretch}.stats {gap:7px}.stats>div {padding-left:9px}.stats strong {font-size:16px}.details {width:100%;height:650px}.graph-toolbar select {max-width:140px}.footer {font-size:9px;height:auto}}
+@media (prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important}.spinner {animation:none}}
+
+.calculation-details {margin-top:12px;font-size:12px;line-height:1.6}
+.calculation-details summary {cursor:pointer;color:#b8d3ff}
+
+.retry-load {margin:8px;font-size:12px;padding:7px 10px}
