@@ -80,10 +80,44 @@ def _anthropic_call(messages: list[dict[str, Any]], tools: list[dict[str, Any]] 
         return None
     model = os.getenv("LLM_MODEL", "claude-3-5-haiku-latest")
     system_parts = [str(m.get("content", "")) for m in messages if m.get("role") == "system"]
-    converted = [
-        {"role": m.get("role"), "content": m.get("content", "")}
-        for m in messages if m.get("role") in {"user", "assistant"}
-    ]
+    converted: list[dict[str, Any]] = []
+    pending_tool_results: list[dict[str, Any]] = []
+
+    def flush_tool_results() -> None:
+        if pending_tool_results:
+            converted.append({"role": "user", "content": list(pending_tool_results)})
+            pending_tool_results.clear()
+
+    for message in messages:
+        role = message.get("role")
+        if role == "tool":
+            pending_tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": str(message.get("tool_call_id", "")),
+                "content": str(message.get("content", "")),
+            })
+            continue
+        flush_tool_results()
+        if role == "assistant" and message.get("tool_calls"):
+            blocks: list[dict[str, Any]] = []
+            if message.get("content"):
+                blocks.append({"type": "text", "text": str(message["content"])})
+            for call in message["tool_calls"]:
+                function = call.get("function", {})
+                try:
+                    arguments = json.loads(function.get("arguments", "{}"))
+                except (TypeError, ValueError):
+                    arguments = {}
+                blocks.append({
+                    "type": "tool_use",
+                    "id": str(call.get("id", "")),
+                    "name": str(function.get("name", "")),
+                    "input": arguments if isinstance(arguments, dict) else {},
+                })
+            converted.append({"role": "assistant", "content": blocks})
+        elif role in {"user", "assistant"}:
+            converted.append({"role": role, "content": message.get("content", "")})
+    flush_tool_results()
     payload: dict[str, Any] = {
         "model": model,
         "max_tokens": int(os.getenv("LLM_MAX_TOKENS", "700")),
