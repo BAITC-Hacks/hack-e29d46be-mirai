@@ -6,7 +6,9 @@ The public entry point fails closed: malformed inputs return empty results.
 
 from collections import deque
 import logging
+from time import monotonic
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -15,12 +17,21 @@ TRANSIT_WINDOW_DAYS = 2
 FAST_TRANSIT_THRESHOLD = 0.8
 SYNC_MIN_PAYERS = 3
 MAX_OBSERVED_DEPTH = 4
+MAX_CYCLE_LENGTH = 5
+MAX_CYCLES = 1000
+MAX_CYCLE_STEPS = 200_000
+MAX_CYCLE_SECONDS = 5.0
+MAX_ROUTE_CANDIDATES = 50_000
+MAX_ROUTES = 1000
+MAX_ROUTE_SECONDS = 5.0
+BETWEENNESS_SAMPLES = 128
 PER_NODE_DTYPES = {
     "gid": "int64", "fast_transit_share": "float64", "fast_transit": "bool",
     "same_day_transit_share_upper_bound": "float64", "sync_in_days": "int64",
     "sync_max_payers": "int64", "in_cycle": "bool", "likely_true_terminal": "bool",
     "terminal_unknown": "bool", "truncated_by_depth": "bool",
     "transit_observation_complete_share": "float64", "transit_seed_caveat": "bool",
+    "repeated_route_count": "int64",
 }
 
 
@@ -142,6 +153,151 @@ def _temporal_features(nodes, edges, tx):
     return result.astype(PER_NODE_DTYPES)
 
 
+def _bounded_cycles(graph):
+    """Enumerate directed simple cycles with budgets checked on each DFS edge.
+
+    Unlike a timeout checked only between simple_cycles yields, this also
+    bounds unsuccessful path searches. The smallest gid is the canonical start.
+    """
+    start_time = monotonic()
+    cycles, steps = [], 0
+    components = sorted((sorted(c) for c in nx.strongly_connected_components(graph)),
+                        key=lambda c: c[0])
+    for component in components:
+        if len(component) == 1 and not graph.has_edge(component[0], component[0]):
+            continue
+        members = set(component)
+        adjacency = {v: sorted(w for w in graph[v] if w in members) for v in component}
+        for start in component:
+            path, used = [start], {start}
+            stack = [iter(adjacency[start])]
+            while stack:
+                if steps >= MAX_CYCLE_STEPS or monotonic() - start_time >= MAX_CYCLE_SECONDS:
+                    return cycles, False, steps
+                target = next(stack[-1], None)
+                if target is None:
+                    stack.pop()
+                    used.remove(path.pop())
+                    continue
+                steps += 1
+                if target == start:
+                    cycles.append(path + [start])
+                    if len(cycles) >= MAX_CYCLES:
+                        return cycles, False, steps
+                elif target > start and target not in used and len(path) < MAX_CYCLE_LENGTH:
+                    path.append(target)
+                    used.add(target)
+                    stack.append(iter(adjacency[target]))
+    return cycles, True, steps
+
+
+def _route_occurrences(first, second):
+    """Match transactions one-to-one on dates, not on value, within one route."""
+    cursor, count = 0, 0
+    for date in second:
+        while cursor < len(first) and (date - first[cursor]).days > TRANSIT_WINDOW_DAYS:
+            cursor += 1
+        if cursor < len(first) and 1 <= (date - first[cursor]).days <= TRANSIT_WINDOW_DAYS:
+            count += 1
+            cursor += 1
+    return count
+
+
+def _repeated_routes(graph, tx):
+    start_time = monotonic()
+    dates = {tuple(map(int, pair)): sorted(group.date.tolist())
+             for pair, group in tx.groupby(["src", "dst"], sort=True) if len(group) >= 2}
+    routes, examined = [], 0
+    for middle in sorted(graph):
+        for source in sorted(graph.predecessors(middle)):
+            first = dates.get((source, middle))
+            if source == middle or first is None:
+                continue
+            for target in sorted(graph.successors(middle)):
+                if examined >= MAX_ROUTE_CANDIDATES or monotonic() - start_time >= MAX_ROUTE_SECONDS:
+                    return routes, False, examined
+                examined += 1
+                if target in (source, middle):
+                    continue
+                second = dates.get((middle, target))
+                if second is None:
+                    continue
+                occurrences = _route_occurrences(first, second)
+                if occurrences >= 2:
+                    routes.append({"gids": [str(source), str(middle), str(target)],
+                                   "occurrences": occurrences, "window_days": TRANSIT_WINDOW_DAYS})
+                    if len(routes) >= MAX_ROUTES:
+                        return routes, False, examined
+    return routes, True, examined
+
+
+def _resilience(graph, nodes):
+    score = None
+    ranking = "betweenness_sampled"
+    for column in ("priority_score", "betweenness"):
+        if column not in nodes:
+            continue
+        values = pd.to_numeric(nodes[column], errors="coerce")
+        if np.isfinite(values).all():
+            score = {int(gid): float(value) for gid, value in zip(nodes.gid, values)}
+            ranking = column
+            break
+    if score is None:
+        k = min(BETWEENNESS_SAMPLES, len(graph))
+        score = (nx.betweenness_centrality(graph, k=k, weight=None, seed=42)
+                 if k else {})
+        if len(graph) <= BETWEENNESS_SAMPLES:
+            ranking = "betweenness_exact"
+    order = sorted(graph, key=lambda gid: (-score[gid], gid))
+    total_value = sum(data["sum_kzt"] for _, _, data in graph.edges(data=True))
+    results = []
+    for requested in (0, 5, 10, 20):
+        removed = order[:requested]
+        remaining = graph.copy()
+        remaining.remove_nodes_from(removed)
+        components = list(nx.weakly_connected_components(remaining))
+        largest = max(map(len, components), default=0)
+        retained_value = sum(data["sum_kzt"] for _, _, data in remaining.edges(data=True))
+        results.append({
+            "removed_top_n": requested, "actual_removed_n": len(removed),
+            "removed_gids": [str(gid) for gid in removed], "ranking_metric": ranking,
+            "remaining_nodes": len(remaining), "largest_component_nodes": largest,
+            "largest_component_share": largest / len(remaining) if remaining else 0.0,
+            "largest_component_original_share": largest / len(graph) if graph else 0.0,
+            "n_components": len(components),
+            "observed_flow_removed_share": max(0.0, min(1.0, 1 - retained_value / total_value))
+            if total_value else 0.0,
+        })
+    return results
+
+
+def _network_features(nodes, edges, tx, per_node):
+    graph = nx.DiGraph()
+    graph.add_nodes_from(sorted(map(int, nodes.gid)))
+    for row in edges.sort_values(["src", "dst"]).itertuples(index=False):
+        graph.add_edge(int(row.src), int(row.dst), sum_kzt=float(row.sum_kzt), n_tx=int(row.n_tx))
+    cycles, cycles_complete, cycle_steps = _bounded_cycles(graph)
+    cycle_members = {gid for cycle in cycles for gid in cycle}
+    per_node["in_cycle"] = per_node.gid.isin(cycle_members)
+    routes, routes_complete, candidates = _repeated_routes(graph, tx)
+    route_counts = {}
+    for route in routes:
+        for gid in route["gids"]:
+            route_counts[int(gid)] = route_counts.get(int(gid), 0) + 1
+    per_node["repeated_route_count"] = per_node.gid.map(route_counts).fillna(0).astype("int64")
+    if not cycles_complete or not routes_complete:
+        LOGGER.warning("Optional extras search capped: cycles_complete=%s routes_complete=%s",
+                       cycles_complete, routes_complete)
+    return {
+        "cycles": [[str(gid) for gid in cycle] for cycle in cycles],
+        "cycles_complete": cycles_complete, "cycle_search_steps": cycle_steps,
+        "cycle_max_length": MAX_CYCLE_LENGTH,
+        "repeated_routes": routes, "repeated_routes_complete": routes_complete,
+        "route_candidates_examined": candidates,
+        "resilience": _resilience(graph, nodes),
+    }
+
+
 def compute_extras(nodes: pd.DataFrame, edges: pd.DataFrame,
                    tx: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Return per-node optional signals and JSON-safe global graph observations.
@@ -152,7 +308,8 @@ def compute_extras(nodes: pd.DataFrame, edges: pd.DataFrame,
     try:
         dated = _validate(nodes, edges, tx)
         per_node = _temporal_features(nodes, edges, dated)
-        return per_node, {"resilience": [], "cycles": []}
+        global_ = _network_features(nodes, edges, dated, per_node)
+        return per_node, global_
     except Exception as exc:
         LOGGER.warning("Optional extras unavailable: %s", exc)
         return _empty_result()

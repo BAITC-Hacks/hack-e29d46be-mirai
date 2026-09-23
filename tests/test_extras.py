@@ -1,11 +1,14 @@
 """Run with python -m unittest discover -s tests -p test_extras.py -v."""
 
 import unittest
+from unittest.mock import patch
+import json
 
+import networkx as nx
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-from pipeline.extras import compute_extras
+from pipeline.extras import compute_extras, _bounded_cycles
 
 
 def fixture(transfers=(), depths=None, seeds=(), gids=None):
@@ -126,6 +129,120 @@ class TemporalTests(unittest.TestCase):
             self.assertTrue(out.empty)
             self.assertEqual(global_, {})
             self.assertEqual(str(out.gid.dtype), "int64")
+
+
+class NetworkTests(unittest.TestCase):
+    def test_directed_cycles_canonical_closed_and_membership(self):
+        transfers = [(1, 2, "2026-07-01", 10), (2, 3, "2026-07-01", 10),
+                     (3, 1, "2026-07-01", 10), (2, 1, "2026-07-01", 10),
+                     (3, 4, "2026-07-01", 10)]
+        out, global_ = compute_extras(*fixture(transfers, gids=[1, 2, 3, 4, 5]))
+        self.assertEqual(global_["cycles"], [["1", "2", "1"], ["1", "2", "3", "1"]])
+        self.assertEqual(out.loc[out.in_cycle, "gid"].tolist(), [1, 2, 3])
+        self.assertTrue(global_["cycles_complete"])
+
+    def test_cycle_length_limit(self):
+        for length in (1, 2, 5, 6):
+            transfers = [(v, (v + 1) % length, "2026-07-01", 10) for v in range(length)]
+            out, global_ = compute_extras(*fixture(transfers))
+            self.assertEqual(len(global_["cycles"]), int(length <= 5))
+            self.assertEqual(int(out.in_cycle.sum()), length if length <= 5 else 0)
+
+    def test_cycles_agree_with_networkx_on_small_graphs(self):
+        for seed in range(5):
+            graph = nx.gnp_random_graph(8, .3, seed=seed, directed=True)
+            actual, complete, _ = _bounded_cycles(graph)
+            def canonical(cycle):
+                i = cycle.index(min(cycle))
+                return tuple(cycle[i:] + cycle[:i])
+            expected = {canonical(c) for c in nx.simple_cycles(graph, length_bound=5)}
+            self.assertTrue(complete)
+            self.assertEqual({tuple(c[:-1]) for c in actual}, expected)
+
+    def test_search_budgets_report_incomplete(self):
+        frames = fixture([(1, 2, "2026-07-01", 10), (2, 1, "2026-07-02", 10)])
+        with patch("pipeline.extras.MAX_CYCLE_STEPS", 0), self.assertLogs("pipeline.extras"):
+            out, global_ = compute_extras(*frames)
+        self.assertEqual(len(out), 2)
+        self.assertFalse(global_["cycles_complete"])
+        self.assertEqual(global_["cycles"], [])
+
+    def test_repeated_route_requires_two_chronological_occurrences(self):
+        transfers = [(1, 2, "2026-07-01", 10), (2, 3, "2026-07-02", 8),
+                     (1, 2, "2026-07-05", 10), (2, 3, "2026-07-07", 8)]
+        out, global_ = compute_extras(*fixture(transfers))
+        self.assertEqual(global_["repeated_routes"], [
+            {"gids": ["1", "2", "3"], "occurrences": 2, "window_days": 2}])
+        self.assertEqual(out.repeated_route_count.tolist(), [1, 1, 1])
+        self.assertTrue(global_["repeated_routes_complete"])
+
+    def test_repeated_aggregate_edges_do_not_prove_repeated_route(self):
+        for outgoing_dates in [("2026-07-01", "2026-07-01"),
+                                ("2026-07-02", "2026-07-08"),
+                                ("2026-07-10", "2026-07-11")]:
+            transfers = [(1, 2, "2026-07-01", 10), (1, 2, "2026-07-05", 10)]
+            transfers += [(2, 3, d, 10) for d in outgoing_dates]
+            _, global_ = compute_extras(*fixture(transfers))
+            self.assertEqual(global_["repeated_routes"], [])
+
+    def test_route_search_budget(self):
+        transfers = [(1, 2, "2026-07-01", 10)] * 2 + [(2, 3, "2026-07-02", 10)] * 2
+        with patch("pipeline.extras.MAX_ROUTE_CANDIDATES", 0), self.assertLogs("pipeline.extras"):
+            out, global_ = compute_extras(*fixture(transfers))
+        self.assertEqual(len(out), 3)
+        self.assertFalse(global_["repeated_routes_complete"])
+
+    def test_resilience_priority_and_denominators(self):
+        # Removing the centre and 4 leaves leaves 6 disconnected nodes.
+        n, e, t = fixture([(0, i, "2026-07-01", 10) for i in range(1, 11)], gids=range(11))
+        n["priority_score"] = [1] + [.5] * 10
+        _, global_ = compute_extras(n, e, t)
+        baseline, top5, top10, top20 = global_["resilience"]
+        self.assertEqual(baseline["largest_component_share"], 1)
+        self.assertEqual(top5["removed_gids"], ["0", "1", "2", "3", "4"])
+        self.assertEqual(top5["ranking_metric"], "priority_score")
+        self.assertEqual(top5["n_components"], 6)
+        self.assertAlmostEqual(top5["largest_component_share"], 1/6)
+        self.assertAlmostEqual(top5["largest_component_original_share"], 1/11)
+        self.assertEqual(top5["observed_flow_removed_share"], 1)
+        self.assertEqual(top10["remaining_nodes"], 1)
+        self.assertEqual(top20["actual_removed_n"], 11)
+        self.assertEqual(top20["largest_component_share"], 0)
+
+    def test_isolates_included_and_empty_resilience(self):
+        for gids in ([], [1, 2, 3]):
+            _, global_ = compute_extras(*fixture(gids=gids))
+            baseline = global_["resilience"][0]
+            self.assertEqual(baseline["n_components"], len(gids))
+            self.assertEqual(baseline["remaining_nodes"], len(gids))
+
+    def test_missing_priority_uses_betweenness_deterministically(self):
+        n, e, t = fixture([(1, 2, "2026-07-01", 10), (2, 3, "2026-07-02", 10)])
+        n["priority_score"] = [1, float("nan"), .5]
+        _, global_ = compute_extras(n, e, t)
+        row = global_["resilience"][1]
+        self.assertEqual(row["ranking_metric"], "betweenness_exact")
+        self.assertEqual(row["removed_gids"][0], "2")
+        n["betweenness"] = [1, 0, 0]
+        _, global_ = compute_extras(n, e, t)
+        self.assertEqual(global_["resilience"][1]["ranking_metric"], "betweenness")
+        self.assertEqual(global_["resilience"][1]["removed_gids"][0], "1")
+
+    def test_large_ids_are_exact_in_dataframe_and_strings_in_json(self):
+        a, b = 100000004015047101, 100000003684369103
+        out, global_ = compute_extras(*fixture([(a, b, "2026-07-01", 10),
+                                               (b, a, "2026-07-02", 10)]))
+        self.assertEqual(set(out.gid), {a, b})
+        self.assertEqual(global_["cycles"], [[str(b), str(a), str(b)]])
+        parsed = json.loads(json.dumps(global_, allow_nan=False))
+        self.assertEqual(set(parsed["resilience"][1]["removed_gids"]), {str(a), str(b)})
+
+    def test_reordered_input_gives_identical_global_results(self):
+        frames = fixture([(1, 2, "2026-07-01", 10), (2, 1, "2026-07-02", 10),
+                          (1, 2, "2026-07-03", 10), (2, 3, "2026-07-04", 10)])
+        _, first = compute_extras(*frames)
+        _, second = compute_extras(*(f.iloc[::-1] for f in frames))
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":
