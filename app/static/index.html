@@ -8,7 +8,9 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/panels.css">
+  <link rel="stylesheet" href="/static/workspace.css">
   <script defer src="/static/vendor/cytoscape.min.js"></script>
+  <script defer src="/static/graph-model.js"></script>
   <script defer src="/static/app.js"></script>
   <script defer src="/static/panels.js"></script>
 </head>
@@ -21,7 +23,7 @@
       <button type="submit">Найти <kbd>↵</kbd></button>
       <div id="search-results" class="search-results" hidden></div>
     </form>
-    <div class="header-meta"><span class="live-dot"></span>Локальный анализ<small id="generated">Данные загружаются</small></div>
+    <div class="header-meta"><span class="live-dot"></span><span id="data-source">Локальный анализ</span><small id="generated">Данные загружаются</small><small id="period"></small></div>
   </header>
   <section class="overview" aria-label="Обзор сети">
     <div><span class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО АНАЛИТИКА</span><h1>Следуйте за потоком</h1><p>Приоритеты, связи и объяснимые гипотезы</p></div>
@@ -34,15 +36,21 @@
       <p class="panel-description">Кого изучить первым и почему</p>
       <div class="list-heading"><span>КЛИЕНТ / РОЛЬ</span><span>ПРИОРИТЕТ</span></div>
       <div id="top-list" class="top-list"><p class="empty">Загружаем приоритеты…</p></div>
+      <details class="bookmarks-panel"><summary>Закладки исследования</summary><div id="bookmarks"></div></details>
       <div class="sidebar-foot">Приоритет — порядок проверки,<br>а не вероятность нарушения.</div>
     </aside>
     <section class="graph-panel panel" aria-label="Граф переводов">
       <div class="graph-heading"><div><h2>Карта потоков</h2><span id="visible-count" class="muted">Загрузка…</span></div><span class="graph-tag">НАПРАВЛЕННЫЙ ГРАФ</span></div>
       <div class="graph-toolbar">
         <div class="segmented" role="group" aria-label="Режим графа"><button data-mode="top" aria-pressed="true">Топ-100 + соседи</button><button data-mode="all" aria-pressed="false">Весь граф</button><button data-mode="ego" aria-pressed="false">Эго-сеть</button></div>
-        <label class="cluster-filter"><span class="sr-only">Подсветить кластер</span><select id="cluster"><option value="">Все кластеры</option></select></label>
+        <label class="cluster-filter"><span class="sr-only">Показать кластер</span><select id="cluster"><option value="">Все кластеры</option></select></label>
+        <label><span class="sr-only">Фильтр роли</span><select id="role-filter"><option value="">Все роли</option></select></label>
+        <label><span class="sr-only">Направление связей</span><select id="direction" disabled><option value="both">Все направления</option><option value="in">Только входящие</option><option value="out">Только исходящие</option></select></label>
       </div>
-      <div class="graph-canvas"><div id="graph" role="img" aria-label="Граф денежных переводов. Для выбора клиента также используйте поиск или список приоритетов."></div><div id="graph-state" class="graph-state"><div class="spinner"></div><p>Загружаем сеть…</p></div><div class="zoom-controls"><button id="zoom-in" title="Приблизить" aria-label="Приблизить">+</button><button id="zoom-out" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать все видимые узлы" aria-label="Показать все видимые узлы">⌖</button></div><div class="graph-help">Размер = приоритет · Толщина связи = сумма</div></div>
+      <div class="investigation-toolbar"><button id="back" disabled title="Вернуться к предыдущему виду">← Назад</button><button id="expand" disabled>Раскрыть связи</button><button id="bookmark" disabled title="Сохранить клиента и текущий вид">☆</button><button id="reset-view">Сброс фильтров</button><details class="graph-menu"><summary>Ещё</summary><div><button id="reset-layout">Вернуть раскладку</button><button id="export-svg">Скачать SVG</button><button id="map-space" aria-pressed="false">Больше карты</button></div></details></div>
+      <div class="selection-bar"><span id="selection-state">Выберите клиента или кластер</span><button id="clear-proof" hidden>Убрать подсветку</button></div>
+      <div class="graph-canvas"><div id="graph" role="img" aria-label="Граф денежных переводов. Для выбора клиента также используйте поиск или список приоритетов."></div><div id="graph-state" class="graph-state"><div class="spinner"></div><p>Загружаем сеть…</p></div><div class="zoom-controls"><button id="zoom-in" title="Приблизить" aria-label="Приблизить">+</button><button id="zoom-out" title="Отдалить" aria-label="Отдалить">−</button><button id="fit" title="Показать все видимые узлы" aria-label="Показать все видимые узлы">⌖</button><span id="zoom-level">100%</span></div></div>
+      <p id="view-description" class="graph-help-text"></p>
       <div id="legend" class="legend" aria-label="Легенда ролей"></div>
     </section>
     <aside id="details-panel" class="details panel" aria-label="Карточка клиента"><div class="panel-heading"><h2>Детали клиента</h2></div><div id="node-panel" class="detail-scroll"><div class="empty detail-empty"><span class="empty-symbol">◎</span><h3>Выберите клиента</h3><p>Нажмите на узел графа или найдите gid, чтобы изучить его связи.</p></div></div></aside>
