@@ -6,6 +6,8 @@ import re
 import time
 from collections import Counter, deque
 
+from assistant.actions import validated_actions
+from assistant.questions import directions, with_explicit_context
 from assistant.cards import (LIMITATIONS, ROLE_RU, adjacent, amount, bounded_call,
                              edge_ends, node_card, node_id, node_map, number,
                              records, template_card)
@@ -25,8 +27,17 @@ _ROLE_ALIASES = {
 }
 
 
-def _result(answer, gids=()):
-    return {"answer": answer, "cited_gids": list(dict.fromkeys(gids))}
+def _result(answer, gids=(), actions=()):
+    result = {"answer": answer, "cited_gids": list(dict.fromkeys(gids))}
+    if actions:
+        result["actions"] = list(actions)
+    return result
+
+
+def _combine(results):
+    return _result("\n\n".join(r["answer"] for r in results),
+                   [gid for r in results for gid in r["cited_gids"]],
+                   [action for r in results for action in r.get("actions", [])])
 
 
 def _ordered(nodes):
@@ -164,7 +175,9 @@ def _run_tool(name, args, graph):
             path.append(current)
             current = parents[current]
         path.reverse()
-        return _result("Направленный путь: " + " → ".join(path) + ". Путь не доказывает прохождение одних и тех же денег.", path)
+        action = {"kind": "path" if len(path) > 1 else "nodes",
+                  "label": "Показать путь" if len(path) > 1 else "Показать узел", "gids": path}
+        return _result("Направленный путь: " + " → ".join(path) + ". Путь не доказывает прохождение одних и тех же денег.", path, [action])
     if name == "common_recipients":
         gids = args["gids"]
         receivers = [set(e["gid"] for e in adjacent(gid, graph, "out")) for gid in gids]
@@ -172,13 +185,16 @@ def _run_tool(name, args, graph):
         result = _list_nodes([nodes[gid] for gid in common], f"Общие получатели от всех {len(gids)} указанных узлов (прямые связи)", 20)
         result["answer"] = "Отправители: " + ", ".join(gids) + ".\n" + result["answer"]
         result["cited_gids"] = list(dict.fromkeys(gids + result["cited_gids"]))
+        if common:
+            result["actions"] = [{"kind": "nodes", "label": "Показать отправителей и общих получателей",
+                                  "gids": list(result["cited_gids"])}]
         return result
     raise ValueError("unknown tool")
 
 
 def _fallback(question, graph):
     nodes = node_map(graph)
-    q = str(question).strip().lower()
+    q = with_explicit_context(question, nodes).strip().lower()
     if not nodes:
         return _result("Граф пуст: узлов для анализа нет. " + LIMITATIONS)
     if any(word in q for word in ("ограничени", "четвёрт", "четверт", "4-м колене", "личност", "доход", "винов", "незакон")):
@@ -208,9 +224,10 @@ def _fallback(question, graph):
             return _run_tool("common_recipients", {"gids": gids}, graph)
         return _result("Уточните запрос для нескольких gid: общий получатель или направленный путь.")
     if len(gids) == 1:
-        direction = "in" if any(word in q for word in ("входящ", "от кого", "отправител")) else "out" if any(word in q for word in ("исходящ", "кому", "получател")) else None
-        if direction:
-            return _run_tool("neighbors", {"gid": gids[0], "direction": direction, "limit": limit}, graph)
+        requested_directions = directions(q)
+        if requested_directions:
+            return _combine([_run_tool("neighbors", {"gid": gids[0], "direction": direction, "limit": limit}, graph)
+                             for direction in requested_directions])
         return _run_tool("find_node", {"gid": gids[0]}, graph)
     if role or any(word in q for word in ("приоритет", "проверить", "первым", "топ", "top")):
         args = {"limit": limit}
@@ -251,7 +268,7 @@ def _llm(question, graph):
                 if any(type(i) is not int or i < 0 or i >= len(results) for i in selection):
                     return None
                 picked = [results[i] for i in dict.fromkeys(selection)]
-                return _result("\n\n".join(r["answer"] for r in picked), [g for r in picked for g in r["cited_gids"]])
+                return _combine(picked)
             except (TypeError, KeyError, ValueError):
                 return None
         if len(calls) > 6:
@@ -282,6 +299,7 @@ def _llm(question, graph):
 
 def ask(question: str, graph: dict) -> dict:
     """Always return the public contract; provider failure uses graph queries."""
+    question = with_explicit_context(question, node_map(graph))
     try:
         fallback = _fallback(question, graph)
     except (ValueError, TypeError, KeyError, OverflowError, AttributeError):
@@ -292,5 +310,9 @@ def ask(question: str, graph: dict) -> dict:
         result = None
     answer = result or fallback
     valid_ids = node_map(graph)
-    return {"answer": answer["answer"], "cited_gids": [g for g in answer["cited_gids"] if g in valid_ids],
-            "source": "llm" if result else "fallback"}
+    response = {"answer": answer["answer"], "cited_gids": [g for g in answer["cited_gids"] if g in valid_ids],
+                "source": "llm" if result else "fallback"}
+    actions = validated_actions(answer.get("actions", []), graph, response["cited_gids"])
+    if actions:
+        response["actions"] = actions
+    return response
