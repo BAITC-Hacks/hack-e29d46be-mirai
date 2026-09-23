@@ -1,6 +1,6 @@
 """priority_score: «кого смотреть первым». Взвешенная сумма перцентилей (веса — config.PRIORITY_WEIGHTS).
 
-Каждая компонента — перцентиль 0..1, поэтому вклад понятен: «в верхних 3% по близости к seed».
+Компоненты нормированы в 0..1: seed/объём/посредничество — перцентили; роль и поведение — правила.
 В `why` выводятся два главных вклада + роль.
 """
 
@@ -17,6 +17,35 @@ LABELS = {
     "behavior": "поведенческие признаки",
 }
 BEHAVIOR_FLAGS = {"gather_scatter", "in_cycle", "sync_inflow"}
+
+
+def stability_scenarios():
+    """One-factor ±10% relative weight changes, normalized back to sum=1."""
+    base = C.PRIORITY_WEIGHTS
+    scenarios = [{"name": "base", "weights": dict(base)}]
+    for key in base:
+        for factor in (.9, 1.1):
+            weights = {k: v * (factor if k == key else 1) for k, v in base.items()}
+            total = sum(weights.values())
+            scenarios.append({"name": f"{key}:{factor:.1f}",
+                              "weights": {k: v / total for k, v in weights.items()}})
+    return scenarios
+
+
+def rank_stability(df, components, top_k=20):
+    """Sensitivity, not confidence or probability; components and input data stay fixed."""
+    ranks = []
+    gids = df.gid.to_numpy()
+    for scenario in stability_scenarios():
+        scores = (components * pd.Series(scenario["weights"])).sum(axis=1).round(4).to_numpy()
+        order = np.lexsort((gids, -scores))
+        rank = np.empty(len(df), dtype=int)
+        rank[order] = np.arange(1, len(df) + 1)
+        ranks.append(rank)
+    matrix = np.asarray(ranks)
+    return [{"top_k": top_k, "scenarios": len(ranks), "top_k_share": float((matrix[:, i] <= top_k).mean()),
+             "min_rank": int(matrix[:, i].min()), "max_rank": int(matrix[:, i].max())}
+            for i in range(len(df))]
 
 
 def _components(df: pd.DataFrame) -> pd.DataFrame:
@@ -39,6 +68,11 @@ def assign_priority(df: pd.DataFrame) -> pd.DataFrame:
     w = pd.Series(C.PRIORITY_WEIGHTS)
     contrib = comp[w.index] * w
     out["priority_score"] = contrib.sum(axis=1).round(4)
+    out["priority_components"] = [
+        [{"key": key, "label": LABELS[key], "value": float(comp.at[i, key]),
+          "weight": float(w[key]), "contribution": float(contrib.at[i, key])} for key in w.index]
+        for i in out.index]
+    out["rank_stability"] = rank_stability(out, comp)
 
     top2 = contrib.apply(lambda row: row.nlargest(2).index.tolist(), axis=1)
     out["priority_why"] = [

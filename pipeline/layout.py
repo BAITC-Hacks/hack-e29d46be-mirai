@@ -9,11 +9,12 @@ import math
 import networkx as nx
 
 from pipeline import config as C
+from pipeline.clusters import undirected_projection
 
 
 def compute_layout(G: nx.DiGraph, cluster_of: dict | None = None, unit: float = 22.0) -> dict:
     """cluster_of: {gid: cluster_id}. Без него — один общий spring layout."""
-    UG = G.to_undirected()
+    UG = undirected_projection(G)
     if cluster_of is None:
         groups = [set(G.nodes)]
     else:
@@ -27,7 +28,7 @@ def compute_layout(G: nx.DiGraph, cluster_of: dict | None = None, unit: float = 
     for k, members in enumerate(groups):
         radius = unit * math.sqrt(len(members)) * 1.6 + unit
         sub = UG.subgraph(members)
-        local = (nx.spring_layout(sub, seed=C.RANDOM_SEED, iterations=60, scale=radius)
+        local = (nx.spring_layout(sub, seed=C.RANDOM_SEED, iterations=60, scale=radius, weight=None)
                  if len(members) > 1 else {next(iter(members)): (0.0, 0.0)})
         cx, cy = _place(placed, radius)
         placed.append((cx, cy, radius))

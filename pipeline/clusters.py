@@ -1,6 +1,6 @@
 """Кластеры: Louvain на неориентированной взвешенной проекции.
 
-Направление для поиска сообществ не учитываем (Louvain работает с неориентированным графом) —
+Для поиска сообществ суммируем встречные потоки в неориентированной проекции —
 направление денег сохраняется в ролях и в гипотезе кластера.
 """
 
@@ -8,6 +8,19 @@ import networkx as nx
 import pandas as pd
 
 from pipeline import config as C
+
+
+def undirected_projection(G: nx.DiGraph) -> nx.Graph:
+    """Sum both directions; stable insertion order makes seeded Louvain reproducible."""
+    graph = nx.Graph()
+    graph.add_nodes_from(sorted(G.nodes))
+    weights = {}
+    for source, target, data in sorted(G.edges(data=True)):
+        pair = tuple(sorted((source, target)))
+        weights[pair] = weights.get(pair, 0.0) + float(data["sum_kzt"])
+    for (source, target), weight in sorted(weights.items()):
+        graph.add_edge(source, target, sum_kzt=weight)
+    return graph
 
 
 def _kzt(x: float) -> str:
@@ -37,7 +50,7 @@ def _hypothesis(sub: pd.DataFrame, internal: float) -> str:
 
 
 def assign_clusters(G: nx.DiGraph, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    UG = G.to_undirected()
+    UG = undirected_projection(G)
     comms = nx.community.louvain_communities(UG, weight="sum_kzt", seed=C.RANDOM_SEED)
     comms = sorted(comms, key=lambda c: (-len(c), min(c)))
     cid = {gid: i for i, c in enumerate(comms) for gid in c}
@@ -53,7 +66,7 @@ def assign_clusters(G: nx.DiGraph, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
         rows.append({
             "cluster_id": i, "n_nodes": len(sub), "n_seed": int(sub.is_seed.sum()),
             "sum_kzt_internal": round(internal, 2),
-            "top_gids": sub.sort_values(rank_key, ascending=False).gid.head(5).tolist(),
+            "top_gids": sub.sort_values([rank_key, "gid"], ascending=[False, True]).gid.head(5).tolist(),
             "hypothesis": _hypothesis(sub, internal),
         })
     return out, pd.DataFrame(rows)
