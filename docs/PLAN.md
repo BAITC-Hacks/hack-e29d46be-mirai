@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | **Мирас** @ausmiras-glitch | Claude Code | `miras-claude` | `miras/<N>-...` | `pipeline/` (кроме extras.py), `run.py`, `requirements.txt`, `shared/`, `README.md`, `docs/` |
 | **Нурай** @nqori | Codex | `nurai` | `nurai/<N>-...` | `app/` (сервер FastAPI + `app/static/`) |
-| **Даниал** @dnurboluly01-cmd | Codex (аккаунт ChatGPT Мираса) | `danial` | `danial/<N>-...` | `assistant/`, `pipeline/extras.py`, `tests/test_extras.py`, `docs/methodology/` |
+| **Даниал** @dnurboluly01-cmd | Codex | `danial` | `danial/<N>-...` | `assistant/`, `pipeline/extras.py`, `tests/test_extras.py`, `docs/methodology/` |
 
 Логика: самая сложная и рискованная часть (роли и метрики) — у Мираса с Claude. Интерфейс и ассистент
 изолированы и работают на моке (`shared/sample_graph.json`), поэтому никто никого не ждёт.
