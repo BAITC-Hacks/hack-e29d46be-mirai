@@ -9,7 +9,8 @@ import pandas as pd
 
 from pipeline import config as C
 
-METRIC_COLS = ["in_deg", "out_deg", "in_kzt", "out_kzt", "in_tx", "out_tx", "pagerank", "pass_through"]
+METRIC_COLS = ["in_deg", "out_deg", "in_kzt", "out_kzt", "in_tx", "out_tx", "pagerank", "pass_through",
+               "seed_exposure", "n_seed_up2", "betweenness", "fast_forward_share"]
 NODES_ROLES_COLS = ["gid", "role", "role_score", "cluster_id", "priority_score", "evidence"]
 
 
@@ -40,6 +41,7 @@ def build_graph_json(df: pd.DataFrame, edges: pd.DataFrame, clusters: pd.DataFra
             "id": str(r.gid), "depth": int(r.depth), "is_seed": bool(r.is_seed),
             "role": r.role, "role_score": float(r.role_score), "cluster_id": int(r.cluster_id),
             "priority_score": float(r.priority_score), "rank": int(r.rank), "evidence": r.evidence,
+            "priority_why": getattr(r, "priority_why", ""),
             "metrics": {c: _clean(getattr(r, c)) for c in METRIC_COLS if hasattr(r, c)},
             "flags": list(r.flags) if hasattr(r, "flags") else [],
             "x": x, "y": y,
